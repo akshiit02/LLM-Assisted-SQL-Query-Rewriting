@@ -1,0 +1,41 @@
+# Groq-generated rewrites (open-weight LLM) verified and benchmarked on SQLite (no Oracle server needed).
+# Requires GROQ_API_KEY (free key: https://console.groq.com/keys) in the environment or in .env.
+#
+# Free-tier budget (gpt-oss-120b): 8K tokens/minute, 200K tokens/day. One generation call is ~2.5K prompt
+# tokens + output, so the provider waits out per-minute 429s automatically (about one call per minute).
+# Candidates are generated once per query (per_query) and re-verified under every condition, so the number of
+# LLM calls depends only on the number of queries: about 20-40 calls for the full workload. Responses are
+# cached in .cache/llm, so a run interrupted by the daily limit resumes for free the next day.
+# Switch to oracle with `--backend oracle` (or use the oracle settings from experiment_oracle.yaml).
+
+experiment:
+  name: groq_sqlite
+  scales: [0.1, 0.5]
+  index_configs: [baseline, fk_indexes, tuned]
+  generation_mode: per_query
+
+database:
+  backend: sqlite
+
+llm:
+  provider: groq
+  model: openai/gpt-oss-120b         # strict JSON-schema outputs; alternatives: openai/gpt-oss-20b, llama-3.3-70b-versatile
+  effort: low                        # -> reasoning_effort (low | medium | high); higher = better rewrites, more tokens
+  num_candidates: 3
+  max_tokens: 4096                   # keeps prompt + completion under the 8K tokens/minute free-tier limit
+  include_plan_in_prompt: true       # plan-aware prompting (cf. E3-Rewrite)
+  include_row_counts: true
+  max_repair_rounds: 1               # send rejected candidates back with verifier feedback
+  also_run_rule_baseline: true       # compare against the rule-based rewriter
+  cache_dir: .cache/llm
+  use_cache: true
+  rate_limit_retries: 8
+  rate_limit_max_wait_s: 120         # longer waits mean a daily limit: stop instead of blocking for hours
+
+benchmark:
+  warmup_runs: 1
+  measured_runs: 5
+  timeout_s: 120
+  improvement_threshold: 0.10
+
+output_dir: results

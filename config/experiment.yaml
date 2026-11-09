@@ -1,0 +1,37 @@
+# Default configuration – runs out of the box on any machine:
+#   * SQLite backend (no database server needed)
+#   * rule-based rewriter (no API key needed)
+# Switch to the real study setup with config/experiment_oracle.yaml.
+
+experiment:
+  name: demo_sqlite_rules
+  workload_file: workload/queries.yaml
+  scales: [0.1, 0.5]                 # dataset scale factors (1.0 ≈ 50k orders, 150k order lines)
+  index_configs: [baseline, fk_indexes, tuned]
+  queries: []                        # empty = all queries
+  complexities: []                   # empty = all levels (basic, intermediate, advanced, complex)
+  generation_mode: per_query         # per_query | per_condition
+
+database:
+  backend: sqlite
+  seed: 42
+  sqlite:
+    path_template: data/benchmark_sf{scale}.db
+
+llm:
+  provider: rule_based               # rule_based | groq | anthropic | ollama
+  num_candidates: 3
+  also_run_rule_baseline: true
+
+benchmark:
+  warmup_runs: 1
+  measured_runs: 5
+  timeout_s: 60
+  improvement_threshold: 0.10        # >=10% faster = improved, >=10% slower = regressed
+
+equivalence:
+  strict_column_names: true
+  float_rel_tolerance: 1.0e-6
+  float_abs_tolerance: 1.0e-6
+
+output_dir: results

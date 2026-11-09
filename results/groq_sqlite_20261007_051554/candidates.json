@@ -1,0 +1,1312 @@
+{
+  "Q01": [
+    {
+      "id": "L1",
+      "query_id": "Q01",
+      "sql": "SELECT\n  order_id,\n  customer_id,\n  total_amount\nFROM orders\nWHERE order_date >= '2024-01-01'\n  AND order_date < '2025-01-01'\n  AND status = 'DELIVERED'\nORDER BY order_id",
+      "source": "llm",
+      "strategy": "range-date-filter",
+      "rationale": "Avoids the costly STRFTIME call on every row by using a lexical range on the ISO\u20118601 stored date. The predicate is sargable and can exploit an index on order_date if one is added later, while remaining semantically identical for all possible rows.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q01",
+      "sql": "SELECT\n  order_id,\n  customer_id,\n  total_amount\nFROM orders\nWHERE substr(order_date, 1, 4) = '2024'\n  AND status = 'DELIVERED'\nORDER BY order_id",
+      "source": "llm",
+      "strategy": "date\u2011substring\u2011filter",
+      "rationale": "Extracts the year with a simple substring instead of STRFTIME, which is cheaper because it avoids a function call and a cast. The result set is unchanged because order_date is stored as 'YYYY\u2011MM\u2011DD'.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q01",
+      "sql": "WITH orders_2024 AS (\n  SELECT order_id, customer_id, total_amount, status\n  FROM orders\n  WHERE order_date >= '2024-01-01' AND order_date < '2025-01-01'\n)\nSELECT order_id, customer_id, total_amount\nFROM orders_2024\nWHERE status = 'DELIVERED'\nORDER BY order_id",
+      "source": "llm",
+      "strategy": "inline\u2011CTE\u2011filter",
+      "rationale": "Materialises the subset of 2024 orders once in a CTE, then applies the status filter and final projection. This can help the optimizer reuse the filtered rows and reduces repeated evaluation of the date expression, while producing exactly the same rows and order.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q01",
+      "sql": "SELECT\n  order_id,\n  customer_id,\n  total_amount\nFROM orders\nWHERE\n  (\n    order_date >= '2024-01-01' AND order_date < '2025-01-01'\n  )\n  AND status = 'DELIVERED'\nORDER BY\n  order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sargable_predicates",
+      "rationale": "Rewrites functions/arithmetic applied to columns (EXTRACT(YEAR ...), col / k) into range predicates on the bare column so indexes and partition pruning can be used.",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q02": [
+    {
+      "id": "L1",
+      "query_id": "Q02",
+      "sql": "SELECT\n  product_id,\n  name,\n  unit_price\nFROM products\nWHERE category_id IN (9, 13, 17, 21)\n  AND unit_price > 40\nORDER BY product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "IN\u2011list predicate",
+      "rationale": "Replacing the OR chain with a single IN predicate lets SQLite treat the condition as a set membership test, which is evaluated more compactly during the table scan. The semantics are identical because IN on a list of constants is equivalent to the series of ORs, and the additional unit_price filter is unchanged.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q02",
+      "sql": "SELECT\n  p.product_id,\n  p.name,\n  p.unit_price\nFROM products AS p\nJOIN (VALUES (9), (13), (17), (21)) AS v(cat_id) ON p.category_id = v.cat_id\nWHERE p.unit_price > 40\nORDER BY p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Semi\u2011join via VALUES",
+      "rationale": "Creating a tiny derived table of the wanted category ids and joining it eliminates the repeated column comparisons. SQLite can perform a fast hash\u2011join between the 4\u2011row VALUES table and the products scan, yielding the same rows but with fewer predicate evaluations per product.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q02",
+      "sql": "SELECT\n  p.product_id,\n  p.name,\n  p.unit_price\nFROM products AS p\nWHERE p.unit_price > 40\n  AND EXISTS (\n    SELECT 1 FROM (VALUES (9), (13), (17), (21)) AS v(cat_id)\n    WHERE v.cat_id = p.category_id\n  )\nORDER BY p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "EXISTS anti\u2011correlated subquery",
+      "rationale": "An EXISTS test against the same VALUES list is logically equivalent to the IN predicate but forces SQLite to use a correlated semi\u2011join, which can be more efficient on very small lookup sets because the engine can stop scanning the VALUES table after the first match. The result set and ordering remain unchanged.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q02",
+      "sql": "SELECT\n  product_id,\n  name,\n  unit_price\nFROM products\nWHERE\n  (\n    category_id IN (9, 13, 17, 21)\n  ) AND unit_price > 40\nORDER BY\n  product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "or_to_in",
+      "rationale": "Collapses an OR chain of equalities on one column into an IN list.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q02",
+      "sql": "SELECT\n  products.product_id AS product_id,\n  products.name AS name,\n  products.unit_price AS unit_price\nFROM products AS products\nWHERE\n  (\n    products.category_id = 13\n    OR products.category_id = 17\n    OR products.category_id = 21\n    OR products.category_id = 9\n  )\n  AND products.unit_price > 40\nORDER BY\n  product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L2R1",
+      "query_id": "Q02",
+      "sql": "SELECT\n  p.product_id,\n  p.name,\n  p.unit_price\nFROM products AS p\nJOIN (\n    SELECT 9  AS cat_id UNION ALL\n    SELECT 13 UNION ALL\n    SELECT 17 UNION ALL\n    SELECT 21\n) AS v ON p.category_id = v.cat_id\nWHERE p.unit_price > 40\nORDER BY p.product_id NULLS LAST",
+      "source": "repair",
+      "strategy": "Semi\u2011join via derived UNION ALL table",
+      "rationale": "SQLite does not support the VALUES clause as a table source with column aliases. Replacing it with a UNION ALL derived table provides the same set of category IDs, allowing the join to be performed as a semi\u2011join. The query remains semantically identical to the original, preserving NULL handling (category_id is NOT NULL) and ordering.",
+      "parent_id": "L2",
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3R1",
+      "query_id": "Q02",
+      "sql": "SELECT\n  p.product_id,\n  p.name,\n  p.unit_price\nFROM products AS p\nWHERE p.unit_price > 40\n  AND EXISTS (\n        SELECT 1\n        FROM (\n            SELECT 9  AS cat_id UNION ALL\n            SELECT 13 UNION ALL\n            SELECT 17 UNION ALL\n            SELECT 21\n        ) AS v\n        WHERE v.cat_id = p.category_id\n    )\nORDER BY p.product_id NULLS LAST",
+      "source": "repair",
+      "strategy": "EXISTS anti\u2011correlated subquery with UNION ALL derived table",
+      "rationale": "The original EXISTS version used a VALUES table, which SQLite rejects. Substituting a UNION ALL derived table yields an equivalent set of allowed category IDs. The EXISTS predicate correctly implements the same filter semantics as the original OR list, and the overall query returns the same rows in the same order.",
+      "parent_id": "L3",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q03": [
+    {
+      "id": "L1",
+      "query_id": "Q03",
+      "sql": "SELECT order_id,\n       order_date,\n       total_amount\nFROM orders\nWHERE total_amount > 800\nORDER BY total_amount DESC,\n         order_id ASC\nLIMIT 50",
+      "source": "llm",
+      "strategy": "PredicateSimplify",
+      "rationale": "The original condition `CAST(total_amount AS REAL) / 2 > 400` is equivalent to `total_amount > 800` because total_amount is already stored as REAL and never NULL. Pushing this simple predicate into the scan reduces the number of rows that must be sorted, eliminating the need for the temporary B\u2011tree used for ordering the full table.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q03",
+      "sql": "SELECT order_id,\n       order_date,\n       total_amount\nFROM orders\nWHERE total_amount * 0.5 > 400\nORDER BY total_amount DESC,\n         order_id ASC\nLIMIT 50",
+      "source": "llm",
+      "strategy": "IntegerMultiplication",
+      "rationale": "Multiplying both sides avoids a division and a CAST, keeping the expression sargable. `total_amount * 0.5 > 400` is the same as `total_amount > 800`. This lets SQLite apply the filter earlier and sort fewer rows, improving I/O and CPU usage.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q03",
+      "sql": "WITH filtered AS (\n    SELECT order_id,\n           order_date,\n           total_amount\n    FROM orders\n    WHERE total_amount > 800\n)\nSELECT order_id,\n       order_date,\n       total_amount\nFROM filtered\nORDER BY total_amount DESC,\n         order_id ASC\nLIMIT 50",
+      "source": "llm",
+      "strategy": "CTE\u2011Prefilter",
+      "rationale": "A Common Table Expression isolates the inexpensive predicate, allowing the optimiser to treat the CTE as a materialised filtered set. The outer query only needs to sort this smaller set, avoiding the temp B\u2011tree on the full table while preserving exact semantics, column order and limits.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q03",
+      "sql": "SELECT\n  order_id,\n  order_date,\n  total_amount\nFROM orders\nWHERE\n  total_amount > 800\nORDER BY\n  total_amount DESC NULLS FIRST,\n  order_id NULLS LAST\nLIMIT 50",
+      "source": "rule",
+      "strategy": "sargable_predicates",
+      "rationale": "Rewrites functions/arithmetic applied to columns (EXTRACT(YEAR ...), col / k) into range predicates on the bare column so indexes and partition pruning can be used.",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q04": [
+    {
+      "id": "L1",
+      "query_id": "Q04",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  c.segment\nFROM customers AS c\nWHERE c.segment = 'CORPORATE'\n  AND c.is_active = 1\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "EliminateRedundantDistinct",
+      "rationale": "customer_id is the primary key, so each row is already unique. Dropping DISTINCT removes an unnecessary distinct\u2011sort phase while preserving the result set and ordering.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q04",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  c.segment\nFROM customers AS c\nWHERE c.segment = 'CORPORATE'\n  AND c.is_active = 1\nGROUP BY c.customer_id, c.name, c.segment\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "GroupByInsteadOfDistinct",
+      "rationale": "A GROUP BY on the primary\u2011key column produces the same unique rows as DISTINCT but lets SQLite use a simple aggregation pass without a separate distinct\u2011elimination step, which can be cheaper on a table\u2011scan.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q04",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  c.segment\nFROM customers AS c\nWHERE EXISTS (\n        SELECT 1\n        FROM customers AS c2\n        WHERE c2.customer_id = c.customer_id\n          AND c2.segment = 'CORPORATE'\n          AND c2.is_active = 1\n      )\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "SemiJoinViaExists",
+      "rationale": "Materialise the qualifying keys in a lightweight sub\u2011query and filter the main table with EXISTS. This decorrelates the predicate, allowing SQLite to stop scanning once the primary\u2011key match is found for each row, and still yields exactly the same rows.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q04",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  c.segment\nFROM customers AS c\nWHERE\n  c.segment = 'CORPORATE' AND c.is_active = 1\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "remove_redundant_distinct",
+      "rationale": "Drops DISTINCT when the projection contains the primary key of the only table.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q04",
+      "sql": "SELECT DISTINCT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  c.segment AS segment\nFROM customers AS c\nWHERE\n  c.is_active = 1 AND c.segment = 'CORPORATE'\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q05": [
+    {
+      "id": "L1",
+      "query_id": "Q05",
+      "sql": "SELECT\n  status,\n  ship_mode,\n  COUNT(*) AS order_count,\n  ROUND(SUM(total_amount), 2) AS revenue\nFROM orders\nWHERE status IN ('SHIPPED', 'DELIVERED')\nGROUP BY status, ship_mode\nORDER BY status, ship_mode",
+      "source": "llm",
+      "strategy": "PushFilterToWhere",
+      "rationale": "The HAVING clause only tests the non\u2011aggregated columns status and ship_mode, so it can be moved to a WHERE predicate. This reduces the number of rows that must be grouped and eliminates the temporary B\u2011Tree used for the HAVING filter.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q05",
+      "sql": "WITH filtered AS (\n  SELECT status, ship_mode, total_amount\n  FROM orders\n  WHERE status IN ('SHIPPED', 'DELIVERED')\n)\nSELECT\n  status,\n  ship_mode,\n  COUNT(*) AS order_count,\n  ROUND(SUM(total_amount), 2) AS revenue\nFROM filtered\nGROUP BY status, ship_mode\nORDER BY status, ship_mode",
+      "source": "llm",
+      "strategy": "PrefilterCTE",
+      "rationale": "A CTE isolates the small filtered set before aggregation. SQLite can materialise the CTE once and then perform a single\u2011pass GROUP BY on the already\u2011filtered rows, avoiding a second scan of the full orders table.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q05",
+      "sql": "SELECT\n  status,\n  ship_mode,\n  COUNT(*) AS order_count,\n  ROUND(SUM(total_amount), 2) AS revenue\nFROM orders\nWHERE status IN ('SHIPPED', 'DELIVERED')\nGROUP BY status, ship_mode\nORDER BY status, ship_mode",
+      "source": "llm",
+      "strategy": "EliminateNullsLast",
+      "rationale": "Both status and ship_mode are defined as NOT NULL, so the explicit \"NULLS LAST\" clause is unnecessary. Removing it lets SQLite recognise that the GROUP BY order already satisfies the ORDER BY, avoiding the temporary B\u2011Tree for sorting.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q05",
+      "sql": "SELECT\n  status,\n  ship_mode,\n  COUNT(*) AS order_count,\n  ROUND(SUM(total_amount), 2) AS revenue\nFROM orders\nWHERE\n  status IN ('SHIPPED', 'DELIVERED')\nGROUP BY\n  status,\n  ship_mode\nORDER BY\n  status NULLS LAST,\n  ship_mode NULLS LAST",
+      "source": "rule",
+      "strategy": "having_to_where",
+      "rationale": "Moves HAVING predicates that only reference grouping columns into WHERE (filter before aggregation).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q06": [
+    {
+      "id": "L1",
+      "query_id": "Q06",
+      "sql": "SELECT c.customer_id,\n       c.name\nFROM   customers AS c\nWHERE  EXISTS (\n         SELECT 1\n         FROM   orders AS o\n         WHERE  o.customer_id = c.customer_id\n           AND  o.order_date >= '2025-06-01'\n           AND  o.total_amount > 500\n       )\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "EXISTS\u2011anti\u2011join",
+      "rationale": "Replaces the IN subquery with a correlated EXISTS predicate, allowing SQLite to use a semi\u2011join instead of materialising a temporary table. The predicate is sargable on orders.order_date and orders.total_amount, so the engine can stop scanning orders as soon as a matching row is found for each customer.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q06",
+      "sql": "SELECT DISTINCT c.customer_id,\n                c.name\nFROM   customers AS c\nJOIN   orders AS o\n       ON o.customer_id = c.customer_id\n      AND o.order_date >= '2025-06-01'\n      AND o.total_amount > 500\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "INNER\u2011JOIN with DISTINCT",
+      "rationale": "Joins customers directly to qualifying orders and uses DISTINCT to remove duplicates. SQLite can perform the join in a single pass over orders (filtered by the date and amount predicates) and then project the distinct customer rows, avoiding the subquery overhead.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q06",
+      "sql": "WITH qualified_customers AS (\n    SELECT DISTINCT o.customer_id\n    FROM   orders AS o\n    WHERE  o.order_date >= '2025-06-01'\n      AND  o.total_amount > 500\n)\nSELECT c.customer_id,\n       c.name\nFROM   customers AS c\nJOIN   qualified_customers qc ON qc.customer_id = c.customer_id\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "WITH\u2011clause pre\u2011filter",
+      "rationale": "Materialises the filtered set of qualifying customers once in a CTE, then simply joins to it. The CTE can be evaluated once, and the outer query just scans the primary\u2011key index of customers, which is the fastest access path for the final projection.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q06",
+      "sql": "SELECT\n  c.customer_id,\n  c.name\nFROM customers AS c\nWHERE\n  EXISTS(\n    SELECT\n      1\n    FROM orders AS o\n    WHERE\n      (\n        o.order_date >= '2025-06-01' AND o.total_amount > 500\n      )\n      AND o.customer_id = c.customer_id\n  )\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "in_to_exists",
+      "rationale": "Rewrites an IN (subquery) semi-join as a correlated EXISTS.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q06",
+      "sql": "SELECT\n  c.customer_id,\n  c.name\nFROM customers AS c\nWHERE\n  c.customer_id IN (\n    SELECT\n      o.customer_id\n    FROM orders AS o\n    WHERE\n      o.order_date >= '2025-06-01' AND o.total_amount > 500\n  )\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q06",
+      "sql": "SELECT\n  c.customer_id AS customer_id,\n  c.name AS name\nFROM customers AS c\nLEFT JOIN (\n  SELECT\n    o.customer_id AS customer_id\n  FROM orders AS o\n  WHERE\n    o.order_date >= '2025-06-01' AND o.total_amount > 500\n  GROUP BY\n    o.customer_id\n) AS q_u_0\n  ON c.customer_id = q_u_0.customer_id\nWHERE\n  NOT q_u_0.customer_id IS NULL\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q06",
+      "sql": "WITH q_u_0 AS (\n  SELECT\n    o.customer_id AS customer_id\n  FROM orders AS o\n  WHERE\n    o.order_date >= DATE('2025-06-01') AND o.total_amount > 500\n  GROUP BY\n    o.customer_id\n)\nSELECT\n  c.customer_id AS customer_id,\n  c.name AS name\nFROM customers AS c\nLEFT JOIN q_u_0 AS q_u_0\n  ON q_u_0.customer_id = c.customer_id\nWHERE\n  NOT q_u_0.customer_id IS NULL\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q07": [
+    {
+      "id": "L1",
+      "query_id": "Q07",
+      "sql": "SELECT\n  p.product_id,\n  p.name\nFROM products AS p\nWHERE NOT EXISTS (\n  SELECT 1\n  FROM order_items AS oi\n  WHERE oi.product_id = p.product_id\n)\nORDER BY p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Correlated NOT EXISTS",
+      "rationale": "Rewrites the IN\u2011subquery as a correlated NOT EXISTS, allowing SQLite to use a semi\u2011join anti\u2011join implementation that can stop scanning order_items as soon as a match is found, reducing work compared to scanning the entire subquery result set.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q07",
+      "sql": "SELECT\n  p.product_id,\n  p.name\nFROM products AS p\nLEFT JOIN order_items AS oi ON oi.product_id = p.product_id\nWHERE oi.product_id IS NULL\nORDER BY p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "LEFT JOIN ... IS NULL",
+      "rationale": "Transforms the anti\u2011join into a LEFT OUTER JOIN followed by an IS NULL filter; SQLite can treat this as an anti\u2011join and avoid materialising the subquery, using the primary\u2011key index on order_items(product_id) for fast look\u2011ups.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q07",
+      "sql": "SELECT\n  p.product_id,\n  p.name\nFROM products AS p\nEXCEPT\nSELECT\n  oi.product_id,\n  '' AS name\nFROM order_items AS oi\nORDER BY product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "EXCEPT Set Difference",
+      "rationale": "Uses set\u2011difference (EXCEPT) which SQLite executes as a distinct\u2011preserving operation; because product_id is unique, the result is identical and SQLite can implement the difference with a merge\u2011join style algorithm that is often faster than evaluating an IN list.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q07",
+      "sql": "SELECT\n  p.product_id,\n  p.name\nFROM products AS p\nWHERE\n  NOT EXISTS(\n    SELECT\n      1\n    FROM order_items AS oi\n    WHERE\n      oi.product_id = p.product_id\n  )\nORDER BY\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "not_in_to_not_exists",
+      "rationale": "Rewrites NOT IN (subquery) as NOT EXISTS (naive rule \u2013 does not check NULL semantics).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q07",
+      "sql": "SELECT\n  p.product_id,\n  p.name\nFROM products AS p\nWHERE\n  NOT p.product_id IN (\n    SELECT\n      oi.product_id\n    FROM order_items AS oi\n  )\nORDER BY\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L3R1",
+      "query_id": "Q07",
+      "sql": "SELECT p.product_id, p.name\nFROM products AS p\nEXCEPT\nSELECT p2.product_id, p2.name\nFROM products AS p2\nJOIN order_items AS oi ON p2.product_id = oi.product_id\nORDER BY product_id NULLS LAST",
+      "source": "repair",
+      "strategy": "EXCEPT Set Difference with matching columns",
+      "rationale": "Use EXCEPT to subtract the set of products that appear in order_items. The second query must return the same columns (product_id, name) for those products, so we join back to products to retrieve the name. This preserves the original semantics, including NULL handling and ordering, while allowing the optimizer to treat the operation as a set difference.",
+      "parent_id": "L3",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q08": [
+    {
+      "id": "L1",
+      "query_id": "Q08",
+      "sql": "SELECT p.product_id,\n       p.name\nFROM products AS p\nWHERE EXISTS (\n        SELECT 1\n        FROM order_items AS oi\n        JOIN orders AS o ON o.order_id = oi.order_id\n        WHERE oi.product_id = p.product_id\n          AND o.status = 'RETURNED'\n      )\nORDER BY p.product_id",
+      "source": "llm",
+      "strategy": "Semi\u2011join with EXISTS",
+      "rationale": "Replace the three\u2011way join plus DISTINCT with a semi\u2011join expressed via EXISTS. The subquery stops as soon as it finds a matching returned order, so each product is visited only once and no temporary B\u2011tree for DISTINCT or ORDER BY is required.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q08",
+      "sql": "SELECT p.product_id,\n       p.name\nFROM products AS p\nWHERE p.product_id IN (\n        SELECT DISTINCT oi.product_id\n        FROM order_items AS oi\n        JOIN orders AS o ON o.order_id = oi.order_id\n        WHERE o.status = 'RETURNED'\n      )\nORDER BY p.product_id",
+      "source": "llm",
+      "strategy": "IN\u2011subquery with indexed search",
+      "rationale": "Use a single IN clause that selects distinct product_id values from order_items of returned orders. SQLite can materialize the subquery once and use the primary\u2011key lookup for products, avoiding the row\u2011by\u2011row join and the temporary DISTINCT on the outer query.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q08",
+      "sql": "SELECT p.product_id,\n       p.name\nFROM (\n        SELECT oi.product_id\n        FROM order_items AS oi\n        JOIN orders AS o ON o.order_id = oi.order_id\n        WHERE o.status = 'RETURNED'\n        GROUP BY oi.product_id\n      ) AS q\nJOIN products AS p ON p.product_id = q.product_id\nORDER BY p.product_id",
+      "source": "llm",
+      "strategy": "GROUP BY aggregation",
+      "rationale": "Aggregate in the inner query to deduplicate product_id before joining to products. GROUP BY is cheaper than DISTINCT on a large join because it can be satisfied with a hash\u2011aggregate, and the outer join then returns each product exactly once without a separate DISTINCT step.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q08",
+      "sql": "SELECT\n  p.product_id,\n  p.name\nFROM products AS p\nWHERE\n  EXISTS(\n    SELECT\n      1\n    FROM order_items AS oi\n    JOIN orders AS o\n      ON o.order_id = oi.order_id\n    WHERE\n      oi.product_id = p.product_id AND o.status = 'RETURNED'\n  )\nORDER BY\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "distinct_join_to_exists",
+      "rationale": "Replaces JOIN + DISTINCT used only for filtering with an EXISTS semi-join.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q08",
+      "sql": "SELECT DISTINCT\n  p.product_id AS product_id,\n  p.name AS name\nFROM products AS p\nJOIN order_items AS oi\n  ON oi.product_id = p.product_id\nJOIN orders AS o\n  ON o.order_id = oi.order_id AND o.status = 'RETURNED'\nWHERE\n  TRUE\nORDER BY\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q08",
+      "sql": "SELECT DISTINCT\n  p.product_id AS product_id,\n  p.name AS name\nFROM products AS p\nJOIN order_items AS oi\n  ON oi.product_id = p.product_id\nJOIN orders AS o\n  ON o.order_id = oi.order_id AND o.status = 'RETURNED'\nORDER BY\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q09": [
+    {
+      "id": "L1",
+      "query_id": "Q09",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  COALESCE(o_agg.order_count, 0) AS order_count,\n  o_agg.last_order\nFROM customers AS c\nLEFT JOIN (\n  SELECT\n    o.customer_id,\n    COUNT(*) AS order_count,\n    MAX(o.order_date) AS last_order\n  FROM orders AS o\n  GROUP BY o.customer_id\n) AS o_agg ON o_agg.customer_id = c.customer_id\nWHERE c.nation_id = 7\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Group\u2011by Join Aggregation",
+      "rationale": "Aggregates orders per customer in a single scan and left\u2011joins the result to the filtered customers, eliminating two correlated subqueries and allowing SQLite to use the automatic covering index on orders.customer_id once.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q09",
+      "sql": "WITH filtered_customers AS (\n  SELECT customer_id, name\n  FROM customers\n  WHERE nation_id = 7\n),\norder_stats AS (\n  SELECT\n    o.customer_id,\n    COUNT(*) OVER (PARTITION BY o.customer_id) AS order_count,\n    MAX(o.order_date) OVER (PARTITION BY o.customer_id) AS last_order\n  FROM orders AS o\n  WHERE EXISTS (SELECT 1 FROM filtered_customers fc WHERE fc.customer_id = o.customer_id)\n)\nSELECT\n  fc.customer_id,\n  fc.name,\n  COALESCE(os.order_count, 0) AS order_count,\n  os.last_order\nFROM filtered_customers AS fc\nLEFT JOIN (\n  SELECT DISTINCT customer_id, order_count, last_order\n  FROM order_stats\n) AS os ON os.customer_id = fc.customer_id\nORDER BY fc.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Window Functions with Filtered Sub\u2011set",
+      "rationale": "Computes order count and last order date with window functions over the orders of the required nation, then selects distinct customer rows. This avoids per\u2011row subquery execution and lets SQLite materialise the window once.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q09",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  COALESCE(a.order_count, 0) AS order_count,\n  a.last_order\nFROM customers AS c\nLEFT JOIN (\n  SELECT\n    o.customer_id,\n    COUNT(*) AS order_count,\n    MAX(o.order_date) AS last_order\n  FROM orders AS o\n  WHERE EXISTS (\n    SELECT 1 FROM customers AS c2\n    WHERE c2.customer_id = o.customer_id AND c2.nation_id = 7\n  )\n  GROUP BY o.customer_id\n) AS a ON a.customer_id = c.customer_id\nWHERE c.nation_id = 7\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Correlated EXISTS + Aggregated Subquery (Semi\u2011join)",
+      "rationale": "Uses an EXISTS predicate to restrict orders to the relevant customers, then aggregates in a single derived table. This keeps the semantics identical (NULL when no orders) while allowing SQLite to apply the covering index only once.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q09",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  (\n    SELECT\n      COUNT(*)\n    FROM orders AS o\n    WHERE\n      o.customer_id = c.customer_id\n  ) AS order_count,\n  (\n    SELECT\n      MAX(o.order_date)\n    FROM orders AS o\n    WHERE\n      o.customer_id = c.customer_id\n  ) AS last_order\nFROM customers AS c\nWHERE\n  c.nation_id = 7\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q09",
+      "sql": "SELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  COALESCE(q_u_0.q_col_0, 0) AS order_count,\n  q_u_2.q_col_0 AS last_order\nFROM customers AS c\nLEFT JOIN (\n  SELECT\n    COUNT(*) AS q_col_0,\n    o.customer_id AS q_u_1\n  FROM orders AS o\n  WHERE\n    TRUE\n  GROUP BY\n    o.customer_id\n) AS q_u_0\n  ON q_u_0.q_u_1 = c.customer_id\nLEFT JOIN (\n  SELECT\n    MAX(o.order_date) AS q_col_0,\n    o.customer_id AS q_u_3\n  FROM orders AS o\n  WHERE\n    TRUE\n  GROUP BY\n    o.customer_id\n) AS q_u_2\n  ON q_u_2.q_u_3 = c.customer_id\nWHERE\n  c.nation_id = 7\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q09",
+      "sql": "SELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  (\n    SELECT\n      COUNT(*) AS q_col_0\n    FROM orders AS o\n    WHERE\n      c.customer_id = o.customer_id\n  ) AS order_count,\n  (\n    SELECT\n      MAX(o.order_date) AS q_col_0\n    FROM orders AS o\n    WHERE\n      c.customer_id = o.customer_id\n  ) AS last_order\nFROM customers AS c\nWHERE\n  c.nation_id = 7\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q09",
+      "sql": "WITH q_u_0 AS (\n  SELECT\n    COUNT(*) AS q_col_0,\n    o.customer_id AS q_u_1\n  FROM orders AS o\n  GROUP BY\n    o.customer_id\n), q_u_2 AS (\n  SELECT\n    MAX(o.order_date) AS q_col_0,\n    o.customer_id AS q_u_3\n  FROM orders AS o\n  GROUP BY\n    o.customer_id\n)\nSELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  COALESCE(q_u_0.q_col_0, 0) AS order_count,\n  q_u_2.q_col_0 AS last_order\nFROM customers AS c\nLEFT JOIN q_u_0 AS q_u_0\n  ON q_u_0.q_u_1 = c.customer_id\nLEFT JOIN q_u_2 AS q_u_2\n  ON q_u_2.q_u_3 = c.customer_id\nWHERE\n  c.nation_id = 7\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q10": [
+    {
+      "id": "L1",
+      "query_id": "Q10",
+      "sql": "SELECT\n  order_id,\n  total_amount\nFROM orders\nWHERE total_amount > 500\n  AND (ship_mode = 'EXPRESS' OR discount_code = 'BULK25')\nORDER BY order_id NULLS LAST",
+      "source": "llm",
+      "strategy": "single-pass\u2011OR\u2011filter",
+      "rationale": "Both UNION branches read the same table and apply predicates that can be combined with a logical OR. Scanning\u202forders once avoids the duplicate scan and the implicit UNION\u2011DISTINCT step, preserving duplicate\u2011free results because the OR condition yields each order_id only once.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q10",
+      "sql": "SELECT DISTINCT\n  order_id,\n  total_amount\nFROM (\n  SELECT order_id, total_amount\n  FROM orders\n  WHERE ship_mode = 'EXPRESS' AND total_amount > 500\n  UNION ALL\n  SELECT order_id, total_amount\n  FROM orders\n  WHERE discount_code = 'BULK25' AND total_amount > 500\n) AS u\nORDER BY order_id NULLS LAST",
+      "source": "llm",
+      "strategy": "UNION\u2011ALL\u202f+\u202fDISTINCT",
+      "rationale": "Replace the default UNION (which forces a DISTINCT) with an explicit UNION ALL followed by a DISTINCT on the combined result set. This lets SQLite materialise the two branches with a single pass each and then de\u2011duplicate in a simple aggregate step, often cheaper than the built\u2011in UNION merge.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q10",
+      "sql": "WITH eligible AS (\n  SELECT order_id, total_amount\n  FROM orders\n  WHERE total_amount > 500\n    AND (ship_mode = 'EXPRESS' OR discount_code = 'BULK25')\n)\nSELECT DISTINCT order_id, total_amount\nFROM eligible\nORDER BY order_id NULLS LAST",
+      "source": "llm",
+      "strategy": "CTE\u2011pre\u2011filter with DISTINCT",
+      "rationale": "A common\u2011table\u2011expression isolates the rows that satisfy either predicate, then a single DISTINCT removes any duplicates. The CTE is materialised once, so the optimizer can apply the filter early and reuse the result for the final projection and ordering.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q10",
+      "sql": "SELECT\n  order_id,\n  total_amount\nFROM orders\nWHERE\n  (\n    ship_mode = 'EXPRESS' AND total_amount > 500\n  )\n  OR (\n    discount_code = 'BULK25' AND total_amount > 500\n  )\nORDER BY\n  order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "union_to_or",
+      "rationale": "Merges a UNION of two filters over the same table into a single scan with OR.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q10",
+      "sql": "SELECT\n  order_id,\n  total_amount\nFROM orders\nWHERE\n  ship_mode = 'EXPRESS' AND total_amount > 500\nUNION ALL\nSELECT\n  order_id,\n  total_amount\nFROM orders\nWHERE\n  discount_code = 'BULK25' AND total_amount > 500\nORDER BY\n  order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "union_to_union_all",
+      "rationale": "Replaces UNION with UNION ALL to skip duplicate elimination (naive rule \u2013 assumes disjoint branches).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q11": [
+    {
+      "id": "L1",
+      "query_id": "Q11",
+      "sql": "WITH category_avg AS (\n    SELECT\n        category_id,\n        AVG(unit_price) AS avg_price\n    FROM products\n    GROUP BY category_id\n)\nSELECT\n    p.product_id,\n    p.name,\n    p.category_id,\n    p.unit_price\nFROM products AS p\nJOIN category_avg ca ON ca.category_id = p.category_id\nWHERE p.unit_price > ca.avg_price\n  AND p.discontinued = 0\nORDER BY p.category_id NULLS LAST,\n         p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Precomputed Category Averages (CTE Join)",
+      "rationale": "Computes the average unit_price per category once in a CTE and joins it to the products table, eliminating the correlated subquery and allowing the planner to use a single scan with a hash join. This reduces the per\u2011row subquery execution overhead.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q11",
+      "sql": "SELECT\n    p.product_id,\n    p.name,\n    p.category_id,\n    p.unit_price\nFROM (\n    SELECT\n        product_id,\n        name,\n        category_id,\n        unit_price,\n        discontinued,\n        AVG(unit_price) OVER (PARTITION BY category_id) AS avg_price\n    FROM products\n) AS p\nWHERE p.unit_price > p.avg_price\n  AND p.discontinued = 0\nORDER BY p.category_id NULLS LAST,\n         p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Window Function Filter",
+      "rationale": "Uses AVG() as a window function partitioned by category_id, so each row carries its category average without a separate join. SQLite can compute the window in a single pass, avoiding the correlated subquery and any temporary B\u2011tree for ordering.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q11",
+      "sql": "SELECT\n    p.product_id,\n    p.name,\n    p.category_id,\n    p.unit_price\nFROM products AS p\nWHERE p.discontinued = 0\n  AND EXISTS (\n        SELECT 1\n        FROM (\n            SELECT category_id, AVG(unit_price) AS avg_price\n            FROM products\n            GROUP BY category_id\n        ) AS ca\n        WHERE ca.category_id = p.category_id\n          AND p.unit_price > ca.avg_price\n    )\nORDER BY p.category_id NULLS LAST,\n         p.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Semi\u2011Join with GROUP BY Subquery",
+      "rationale": "Filters products by joining to a subquery that returns only the (category_id, avg_price) pairs where a product can be greater than the average. The join is a semi\u2011join, letting SQLite prune rows early and avoid materializing the full average table for categories that have no qualifying products.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q11",
+      "sql": "SELECT\n  p.product_id,\n  p.name,\n  p.category_id,\n  p.unit_price\nFROM products AS p\nWHERE\n  p.unit_price > (\n    SELECT\n      AVG(p2.unit_price)\n    FROM products AS p2\n    WHERE\n      p2.category_id = p.category_id\n  )\n  AND p.discontinued = 0\nORDER BY\n  p.category_id NULLS LAST,\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q11",
+      "sql": "SELECT\n  p.product_id AS product_id,\n  p.name AS name,\n  p.category_id AS category_id,\n  p.unit_price AS unit_price\nFROM products AS p\nLEFT JOIN (\n  SELECT\n    AVG(p2.unit_price) AS q_col_0,\n    p2.category_id AS q_u_1\n  FROM products AS p2\n  WHERE\n    TRUE\n  GROUP BY\n    p2.category_id\n) AS q_u_0\n  ON q_u_0.q_u_1 = p.category_id\nWHERE\n  p.unit_price > q_u_0.q_col_0 AND p.discontinued = 0\nORDER BY\n  p.category_id NULLS LAST,\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q11",
+      "sql": "SELECT\n  p.product_id AS product_id,\n  p.name AS name,\n  p.category_id AS category_id,\n  p.unit_price AS unit_price\nFROM products AS p\nWHERE\n  p.discontinued = 0\n  AND p.unit_price > (\n    SELECT\n      AVG(p2.unit_price) AS q_col_0\n    FROM products AS p2\n    WHERE\n      p.category_id = p2.category_id\n  )\nORDER BY\n  p.category_id NULLS LAST,\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q11",
+      "sql": "WITH q_u_0 AS (\n  SELECT\n    AVG(p2.unit_price) AS q_col_0,\n    p2.category_id AS q_u_1\n  FROM products AS p2\n  GROUP BY\n    p2.category_id\n)\nSELECT\n  p.product_id AS product_id,\n  p.name AS name,\n  p.category_id AS category_id,\n  p.unit_price AS unit_price\nFROM products AS p\nLEFT JOIN q_u_0 AS q_u_0\n  ON q_u_0.q_u_1 = p.category_id\nWHERE\n  q_u_0.q_col_0 < p.unit_price AND p.discontinued = 0\nORDER BY\n  p.category_id NULLS LAST,\n  p.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q12": [
+    {
+      "id": "L1",
+      "query_id": "Q12",
+      "sql": "SELECT c.customer_id,\n       c.name,\n       c.segment\nFROM   customers AS c\nJOIN   (\n         SELECT o.customer_id,\n                MAX(CASE WHEN o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01' THEN 1 ELSE 0 END) AS has_2024,\n                MAX(CASE WHEN o.order_date >= '2025-01-01' THEN 1 ELSE 0 END)        AS has_2025\n         FROM   orders AS o\n         GROUP BY o.customer_id\n       ) AS agg ON agg.customer_id = c.customer_id\nWHERE  agg.has_2024 = 1\n  AND  agg.has_2025 = 0\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "group\u2011by\u2011having anti\u2011join",
+      "rationale": "Aggregate orders per customer once, then filter customers that have at least one 2024 order and no 2025 orders using HAVING. This replaces two correlated subqueries with a single grouped scan of the orders table, reducing I/O and eliminating repeated index lookups.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q12",
+      "sql": "WITH cust_2024 AS (\n        SELECT DISTINCT o.customer_id\n        FROM   orders o\n        WHERE  o.order_date >= '2024-01-01'\n           AND o.order_date <  '2025-01-01'\n     ),\n     cust_2025 AS (\n        SELECT DISTINCT o.customer_id\n        FROM   orders o\n        WHERE  o.order_date >= '2025-01-01'\n     )\nSELECT c.customer_id,\n       c.name,\n       c.segment\nFROM   customers c\nJOIN   cust_2024   cu24 ON cu24.customer_id = c.customer_id\nLEFT   JOIN cust_2025   cu25 ON cu25.customer_id = c.customer_id\nWHERE  cu25.customer_id IS NULL\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "LEFT\u2011JOIN with filtered sub\u2011sets",
+      "rationale": "Create two derived tables: one with distinct customers that placed orders in 2024, another with distinct customers that placed orders in 2025. Then use a LEFT JOIN / IS NULL anti\u2011join to keep only those present in the first set but absent from the second. This lets SQLite use simple index scans on the filtered subsets and avoids correlated subqueries.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q12",
+      "sql": "SELECT c.customer_id,\n       c.name,\n       c.segment\nFROM   customers c\nWHERE  EXISTS ( SELECT 1\n                 FROM   orders o\n                 WHERE  o.customer_id = c.customer_id\n                   AND o.order_date >= '2024-01-01'\n                   AND o.order_date <  '2025-01-01' )\n  AND  c.customer_id NOT IN ( SELECT o.customer_id\n                               FROM   orders o\n                               WHERE  o.order_date >= '2025-01-01' )\nORDER BY c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "EXISTS with NOT EXISTS using indexed semi\u2011joins (materialised)",
+      "rationale": "Rewrite the NOT EXISTS as a NOT IN on a derived set that eliminates NULLs, then keep the original EXISTS. SQLite can turn the NOT IN into a semi\u2011join using the primary\u2011key index on orders.customer_id, avoiding two correlated scans per row.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q12",
+      "sql": "SELECT\n  c.customer_id,\n  c.name,\n  c.segment\nFROM customers AS c\nWHERE\n  c.customer_id IN (\n    SELECT\n      o.customer_id\n    FROM orders AS o\n    WHERE\n      o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01'\n  )\n  AND NOT c.customer_id IN (\n    SELECT\n      o.customer_id\n    FROM orders AS o\n    WHERE\n      o.order_date >= '2025-01-01'\n  )\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "exists_to_in",
+      "rationale": "Rewrites a correlated [NOT] EXISTS with an equality correlation as an uncorrelated [NOT] IN.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q12",
+      "sql": "SELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  c.segment AS segment\nFROM customers AS c\nLEFT JOIN (\n  SELECT\n    o.customer_id AS q_u_1\n  FROM orders AS o\n  WHERE\n    TRUE AND o.order_date >= '2024-01-01' AND o.order_date < '2025-01-01'\n  GROUP BY\n    o.customer_id\n) AS q_u_0\n  ON q_u_0.q_u_1 = c.customer_id\nLEFT JOIN (\n  SELECT\n    o.customer_id AS q_u_3\n  FROM orders AS o\n  WHERE\n    TRUE AND o.order_date >= '2025-01-01'\n  GROUP BY\n    o.customer_id\n) AS q_u_2\n  ON q_u_2.q_u_3 = c.customer_id\nWHERE\n  NOT q_u_0.q_u_1 IS NULL AND NOT NOT q_u_2.q_u_3 IS NULL\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q12",
+      "sql": "SELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  c.segment AS segment\nFROM customers AS c\nWHERE\n  EXISTS(\n    SELECT\n      1 AS \"1\"\n    FROM orders AS o\n    WHERE\n      c.customer_id = o.customer_id\n      AND o.order_date < '2025-01-01'\n      AND o.order_date >= '2024-01-01'\n  )\n  AND NOT EXISTS(\n    SELECT\n      1 AS \"1\"\n    FROM orders AS o\n    WHERE\n      c.customer_id = o.customer_id AND o.order_date >= '2025-01-01'\n  )\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q12",
+      "sql": "WITH q_u_0 AS (\n  SELECT\n    o.customer_id AS q_u_1\n  FROM orders AS o\n  WHERE\n    o.order_date < DATE('2025-01-01') AND o.order_date >= DATE('2024-01-01')\n  GROUP BY\n    o.customer_id\n), q_u_2 AS (\n  SELECT\n    o.customer_id AS q_u_3\n  FROM orders AS o\n  WHERE\n    o.order_date >= DATE('2025-01-01')\n  GROUP BY\n    o.customer_id\n)\nSELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  c.segment AS segment\nFROM customers AS c\nLEFT JOIN q_u_0 AS q_u_0\n  ON q_u_0.q_u_1 = c.customer_id\nLEFT JOIN q_u_2 AS q_u_2\n  ON q_u_2.q_u_3 = c.customer_id\nWHERE\n  NOT NOT q_u_2.q_u_3 IS NULL AND NOT q_u_0.q_u_1 IS NULL\nORDER BY\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q13": [
+    {
+      "id": "L1",
+      "query_id": "Q13",
+      "sql": "WITH customer_revenue AS (\n    SELECT\n        c.nation_id,\n        o.customer_id,\n        ROUND(SUM(o.total_amount), 2) AS revenue\n    FROM orders o\n    JOIN customers c ON c.customer_id = o.customer_id\n    WHERE o.status <> 'CANCELLED'\n    GROUP BY c.nation_id, o.customer_id\n), ranked AS (\n    SELECT\n        cr.nation_id,\n        cr.customer_id,\n        cr.revenue,\n        ROW_NUMBER() OVER (PARTITION BY cr.nation_id ORDER BY cr.revenue DESC, cr.customer_id) AS rn\n    FROM customer_revenue cr\n)\nSELECT\n    n.name AS nation,\n    r.customer_id,\n    r.revenue\nFROM ranked r\nJOIN nations n ON n.nation_id = r.nation_id\nWHERE r.rn = 1\nORDER BY n.name NULLS LAST, r.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Window\u2011Function Top\u20111 per Nation",
+      "rationale": "Computes revenue per customer once, then uses ROW_NUMBER() partitioned by nation to pick the highest\u2011revenue customer, eliminating the duplicated aggregation subquery and the correlated scalar subquery. SQLite can evaluate the window in a single pass, reducing materialization and temp B\u2011tree usage.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q13",
+      "sql": "WITH rev AS (\n    SELECT\n        c.nation_id,\n        o.customer_id,\n        ROUND(SUM(o.total_amount), 2) AS revenue\n    FROM orders o\n    JOIN customers c ON c.customer_id = o.customer_id\n    WHERE o.status <> 'CANCELLED'\n    GROUP BY c.nation_id, o.customer_id\n), max_rev AS (\n    SELECT nation_id, MAX(revenue) AS max_revenue\n    FROM rev\n    GROUP BY nation_id\n)\nSELECT\n    n.name AS nation,\n    r.customer_id,\n    r.revenue\nFROM rev r\nJOIN max_rev mr ON mr.nation_id = r.nation_id AND mr.max_revenue = r.revenue\nJOIN nations n ON n.nation_id = r.nation_id\nORDER BY n.name NULLS LAST, r.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Semi\u2011Join Max\u2011Revenue per Nation",
+      "rationale": "Pre\u2011aggregates revenue per customer once, then joins to a derived table that holds the maximum revenue per nation. The join uses a simple equality predicate, allowing SQLite to use its automatic covering indexes and avoid the correlated subquery and double aggregation.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q13",
+      "sql": "WITH rev AS (\n    SELECT\n        c.nation_id,\n        o.customer_id,\n        ROUND(SUM(o.total_amount), 2) AS revenue\n    FROM orders o\n    JOIN customers c ON c.customer_id = o.customer_id\n    WHERE o.status <> 'CANCELLED'\n    GROUP BY c.nation_id, o.customer_id\n)\nSELECT\n    n.name AS nation,\n    r.customer_id,\n    r.revenue\nFROM rev r\nJOIN nations n ON n.nation_id = r.nation_id\nWHERE EXISTS (\n    SELECT 1\n    FROM rev r2\n    WHERE r2.nation_id = r.nation_id\n      AND r2.revenue > r.revenue\n) = 0\nORDER BY n.name NULLS LAST, r.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Correlated EXISTS with Pre\u2011Aggregated Revenue",
+      "rationale": "Keeps a single aggregation CTE, then uses an EXISTS predicate to ensure the row's revenue equals the maximum for its nation. EXISTS stops at the first match, letting SQLite short\u2011circuit the inner scan and avoid materializing the full sub\u2011aggregation for each outer row.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q13",
+      "sql": "WITH t2 AS (\n  SELECT\n    c2.nation_id,\n    o2.customer_id,\n    ROUND(SUM(o2.total_amount), 2) AS revenue\n  FROM orders AS o2\n  JOIN customers AS c2\n    ON c2.customer_id = o2.customer_id\n  WHERE\n    o2.status <> 'CANCELLED'\n  GROUP BY\n    c2.nation_id,\n    o2.customer_id\n), t AS (\n  SELECT\n    c.nation_id,\n    o.customer_id,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  JOIN customers AS c\n    ON c.customer_id = o.customer_id\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    c.nation_id,\n    o.customer_id\n)\nSELECT\n  n.name AS nation,\n  t.customer_id,\n  t.revenue\nFROM t AS t\nJOIN nations AS n\n  ON n.nation_id = t.nation_id\nWHERE\n  t.revenue = (\n    SELECT\n      MAX(t2.revenue)\n    FROM t2 AS t2\n    WHERE\n      t2.nation_id = t.nation_id\n  )\nORDER BY\n  n.name NULLS LAST,\n  t.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q13",
+      "sql": "SELECT\n  n.name AS nation,\n  t.customer_id AS customer_id,\n  t.revenue AS revenue\nFROM (\n  SELECT\n    c.nation_id AS nation_id,\n    o.customer_id AS customer_id,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  JOIN customers AS c\n    ON c.customer_id = o.customer_id\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    c.nation_id,\n    o.customer_id\n) AS t\nJOIN nations AS n\n  ON n.nation_id = t.nation_id\nLEFT JOIN (\n  SELECT\n    MAX(t2.revenue) AS q_col_0,\n    t2.nation_id AS q_u_1\n  FROM (\n    SELECT\n      c2.nation_id AS nation_id,\n      o2.customer_id AS customer_id,\n      ROUND(SUM(o2.total_amount), 2) AS revenue\n    FROM orders AS o2\n    JOIN customers AS c2\n      ON c2.customer_id = o2.customer_id\n    WHERE\n      o2.status <> 'CANCELLED'\n    GROUP BY\n      c2.nation_id,\n      o2.customer_id\n  ) AS t2\n  WHERE\n    TRUE\n  GROUP BY\n    t2.nation_id\n) AS q_u_0\n  ON q_u_0.q_u_1 = t.nation_id\nWHERE\n  t.revenue = q_u_0.q_col_0\nORDER BY\n  n.name NULLS LAST,\n  t.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q13",
+      "sql": "SELECT\n  n.name AS nation,\n  t.customer_id AS customer_id,\n  t.revenue AS revenue\nFROM (\n  SELECT\n    c.nation_id AS nation_id,\n    o.customer_id AS customer_id,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  JOIN customers AS c\n    ON c.customer_id = o.customer_id\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    c.nation_id,\n    o.customer_id\n) AS t\nJOIN nations AS n\n  ON n.nation_id = t.nation_id\nWHERE\n  t.revenue = (\n    SELECT\n      MAX(t2.revenue) AS q_col_0\n    FROM (\n      SELECT\n        c2.nation_id AS nation_id,\n        o2.customer_id AS customer_id,\n        ROUND(SUM(o2.total_amount), 2) AS revenue\n      FROM orders AS o2\n      JOIN customers AS c2\n        ON c2.customer_id = o2.customer_id\n      WHERE\n        o2.status <> 'CANCELLED'\n      GROUP BY\n        c2.nation_id,\n        o2.customer_id\n    ) AS t2\n    WHERE\n      t.nation_id = t2.nation_id\n  )\nORDER BY\n  n.name NULLS LAST,\n  t.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q13",
+      "sql": "WITH t AS (\n  SELECT\n    c.nation_id AS nation_id,\n    o.customer_id AS customer_id,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  JOIN customers AS c\n    ON c.customer_id = o.customer_id\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    c.nation_id,\n    o.customer_id\n), t2 AS (\n  SELECT\n    c2.nation_id AS nation_id,\n    ROUND(SUM(o2.total_amount), 2) AS revenue\n  FROM orders AS o2\n  JOIN customers AS c2\n    ON c2.customer_id = o2.customer_id\n  WHERE\n    o2.status <> 'CANCELLED'\n  GROUP BY\n    c2.nation_id,\n    o2.customer_id\n), q_u_0 AS (\n  SELECT\n    MAX(t2.revenue) AS q_col_0,\n    t2.nation_id AS q_u_1\n  FROM t2 AS t2\n  GROUP BY\n    t2.nation_id\n)\nSELECT\n  n.name AS nation,\n  t.customer_id AS customer_id,\n  t.revenue AS revenue\nFROM t AS t\nJOIN nations AS n\n  ON n.nation_id = t.nation_id\nLEFT JOIN q_u_0 AS q_u_0\n  ON q_u_0.q_u_1 = t.nation_id\nWHERE\n  q_u_0.q_col_0 = t.revenue\nORDER BY\n  n.name NULLS LAST,\n  t.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q14": [
+    {
+      "id": "L1",
+      "query_id": "Q14",
+      "sql": "SELECT\n    category_id,\n    product_id,\n    revenue\nFROM (\n    SELECT\n        p.category_id,\n        p.product_id,\n        ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue,\n        ROW_NUMBER() OVER (\n            PARTITION BY p.category_id\n            ORDER BY ROUND(SUM(oi.quantity * oi.unit_price), 2) DESC,\n                     p.product_id ASC\n        ) AS rn\n    FROM products AS p\n    JOIN order_items AS oi ON oi.product_id = p.product_id\n    GROUP BY p.category_id, p.product_id\n) AS ranked\nWHERE rn <= 3\nORDER BY\n    category_id NULLS LAST,\n    revenue DESC NULLS FIRST,\n    product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Window\u2011Function Top\u2011N per Category",
+      "rationale": "Compute revenue per product once, then rank products within each category using ROW_NUMBER(). The outer filter on row_number <= 3 replaces the correlated COUNT subquery, eliminating the duplicated aggregation and the correlated scalar subquery, which reduces I/O and removes the temporary B\u2011tree used for GROUP BY in the subquery.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q14",
+      "sql": "WITH rev AS (\n    SELECT\n        p.category_id,\n        p.product_id,\n        ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n    FROM products AS p\n    JOIN order_items AS oi ON oi.product_id = p.product_id\n    GROUP BY p.category_id, p.product_id\n)\nSELECT\n    r.category_id,\n    r.product_id,\n    r.revenue\nFROM rev AS r\nWHERE NOT EXISTS (\n    SELECT 1\n    FROM rev AS r2\n    WHERE r2.category_id = r.category_id\n      AND r2.revenue > r.revenue\n    LIMIT 3\n)\nORDER BY\n    r.category_id NULLS LAST,\n    r.revenue DESC NULLS FIRST,\n    r.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Pre\u2011aggregated CTE with Semi\u2011Join",
+      "rationale": "First materialize the product\u2011level revenue in a CTE, then join it to itself using a NOT EXISTS anti\u2011join that checks for three or more higher\u2011revenue rows in the same category. This uses a single aggregation and leverages SQLite\u2019s ability to treat the NOT EXISTS as a semi\u2011join, avoiding the repeated GROUP BY inside the correlated subquery.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q14",
+      "sql": "WITH rev AS (\n    SELECT\n        p.category_id,\n        p.product_id,\n        ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n    FROM products AS p\n    JOIN order_items AS oi ON oi.product_id = p.product_id\n    GROUP BY p.category_id, p.product_id\n)\nSELECT\n    r.category_id,\n    r.product_id,\n    r.revenue\nFROM rev AS r\nWHERE 3 > (\n    SELECT COUNT(*)\n    FROM rev AS r2\n    WHERE r2.category_id = r.category_id\n      AND r2.revenue > r.revenue\n)\nORDER BY\n    r.category_id NULLS LAST,\n    r.revenue DESC NULLS FIRST,\n    r.product_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Top\u2011N via Correlated COUNT with Indexed Sub\u2011aggregation",
+      "rationale": "Keep the original COUNT\u2011based logic but materialize the revenue aggregation once in a temporary table (or CTE) and let SQLite use the primary\u2011key index on product_id for the inner scan. The correlated subquery now references the pre\u2011aggregated rows, avoiding re\u2011scanning order_items for each outer row and eliminating the second GROUP BY.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q14",
+      "sql": "WITH r2 AS (\n  SELECT\n    p.category_id,\n    p.product_id,\n    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n  FROM products AS p\n  JOIN order_items AS oi\n    ON oi.product_id = p.product_id\n  GROUP BY\n    p.category_id,\n    p.product_id\n)\nSELECT\n  r.category_id,\n  r.product_id,\n  r.revenue\nFROM r2 AS r\nWHERE\n  3 > (\n    SELECT\n      COUNT(*)\n    FROM r2 AS r2\n    WHERE\n      r2.category_id = r.category_id AND r2.revenue > r.revenue\n  )\nORDER BY\n  r.category_id NULLS LAST,\n  r.revenue DESC NULLS FIRST,\n  r.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q14",
+      "sql": "SELECT\n  r.category_id AS category_id,\n  r.product_id AS product_id,\n  r.revenue AS revenue\nFROM (\n  SELECT\n    p.category_id AS category_id,\n    p.product_id AS product_id,\n    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n  FROM products AS p\n  JOIN order_items AS oi\n    ON oi.product_id = p.product_id\n  GROUP BY\n    p.category_id,\n    p.product_id\n) AS r\nWHERE\n  (\n    SELECT\n      COUNT(*) AS q_col_0\n    FROM (\n      SELECT\n        p.category_id AS category_id,\n        p.product_id AS product_id,\n        ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n      FROM products AS p\n      JOIN order_items AS oi\n        ON oi.product_id = p.product_id\n      GROUP BY\n        p.category_id,\n        p.product_id\n    ) AS r2\n    WHERE\n      r.category_id = r2.category_id AND r.revenue < r2.revenue\n  ) < 3\nORDER BY\n  r.category_id NULLS LAST,\n  r.revenue DESC NULLS FIRST,\n  r.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q14",
+      "sql": "WITH r2 AS (\n  SELECT\n    p.category_id AS category_id,\n    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n  FROM products AS p\n  JOIN order_items AS oi\n    ON oi.product_id = p.product_id\n  GROUP BY\n    p.category_id,\n    p.product_id\n), r AS (\n  SELECT\n    p.category_id AS category_id,\n    p.product_id AS product_id,\n    ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n  FROM products AS p\n  JOIN order_items AS oi\n    ON oi.product_id = p.product_id\n  GROUP BY\n    p.category_id,\n    p.product_id\n)\nSELECT\n  r.category_id AS category_id,\n  r.product_id AS product_id,\n  r.revenue AS revenue\nFROM r AS r\nWHERE\n  (\n    SELECT\n      COUNT(*) AS q_col_0\n    FROM r2 AS r2\n    WHERE\n      r.category_id = r2.category_id AND r.revenue < r2.revenue\n  ) < 3\nORDER BY\n  r.category_id NULLS LAST,\n  r.revenue DESC NULLS FIRST,\n  r.product_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L2R1",
+      "query_id": "Q14",
+      "sql": "WITH rev AS (\n    SELECT\n        p.category_id,\n        p.product_id,\n        ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue\n    FROM products AS p\n    JOIN order_items AS oi ON oi.product_id = p.product_id\n    GROUP BY p.category_id, p.product_id\n)\nSELECT\n    r.category_id,\n    r.product_id,\n    r.revenue\nFROM rev AS r\nWHERE (\n    SELECT COUNT(*)\n    FROM rev AS r2\n    WHERE r2.category_id = r.category_id\n      AND r2.revenue > r.revenue\n) < 3\nORDER BY\n    r.category_id NULLS LAST,\n    r.revenue DESC NULLS FIRST,\n    r.product_id NULLS LAST",
+      "source": "repair",
+      "strategy": "Pre\u2011aggregated CTE with correlated count (rank \u2264 3)",
+      "rationale": "Compute each product's revenue once in a CTE and then select rows whose revenue is among the three highest per category. Using a correlated COUNT(*) preserves the exact semantics of the original \"3 > (SELECT COUNT(* ) \u2026)\" condition, unlike the previous NOT EXISTS+LIMIT which changed the logic.",
+      "parent_id": "L2",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q15": [
+    {
+      "id": "L1",
+      "query_id": "Q15",
+      "sql": "WITH overall_avg AS (\n  SELECT AVG(rating) AS avg_rating_all FROM reviews\n), supplier_reviews AS (\n  SELECT\n    p.supplier_id,\n    COUNT(r.review_id) AS review_count,\n    AVG(r.rating) AS avg_rating\n  FROM products p\n  JOIN reviews r ON r.product_id = p.product_id\n  GROUP BY p.supplier_id\n)\nSELECT\n  s.supplier_id,\n  s.name,\n  sr.review_count,\n  ROUND(sr.avg_rating, 3) AS avg_rating\nFROM supplier_reviews sr\nJOIN suppliers s ON s.supplier_id = sr.supplier_id\nCROSS JOIN overall_avg oa\nWHERE sr.avg_rating >= oa.avg_rating_all\n  AND sr.review_count >= 20\nORDER BY avg_rating DESC, s.supplier_id\nLIMIT 20",
+      "source": "llm",
+      "strategy": "Pre\u2011aggregate reviews then join overall avg",
+      "rationale": "Compute the overall average rating once in a CTE and join it to the per\u2011supplier aggregates, avoiding the scalar subquery that forces a full scan of reviews for each group. The GROUP BY is then performed on the pre\u2011aggregated review rows, which lets SQLite use a single pass and eliminates the temporary B\u2011tree for the HAVING check.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q15",
+      "sql": "WITH supplier_agg AS (\n  SELECT\n    p.supplier_id,\n    COUNT(r.review_id) AS review_count,\n    AVG(r.rating) AS avg_rating\n  FROM products p\n  JOIN reviews r ON r.product_id = p.product_id\n  GROUP BY p.supplier_id\n), overall AS (\n  SELECT AVG(rating) OVER () AS overall_avg FROM reviews LIMIT 1\n)\nSELECT\n  s.supplier_id,\n  s.name,\n  sa.review_count,\n  ROUND(sa.avg_rating, 3) AS avg_rating\nFROM supplier_agg sa\nJOIN suppliers s ON s.supplier_id = sa.supplier_id\nCROSS JOIN overall o\nWHERE sa.avg_rating >= o.overall_avg\n  AND sa.review_count >= 20\nORDER BY avg_rating DESC, s.supplier_id\nLIMIT 20",
+      "source": "llm",
+      "strategy": "Use window function for overall average",
+      "rationale": "A window function computes the overall average rating over all review rows once, then each supplier row can be filtered without a correlated subquery. This removes the scalar subquery and lets SQLite materialise the window result in a single pass, improving cache locality.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q15",
+      "sql": "WITH overall_avg AS (\n  SELECT AVG(rating) AS val FROM reviews\n), filtered AS (\n  SELECT p.supplier_id, r.review_id, r.rating\n  FROM products p\n  JOIN reviews r ON r.product_id = p.product_id\n)\nSELECT\n  s.supplier_id,\n  s.name,\n  COUNT(f.review_id) AS review_count,\n  ROUND(AVG(f.rating), 3) AS avg_rating\nFROM filtered f\nJOIN suppliers s ON s.supplier_id = f.supplier_id\nWHERE (SELECT val FROM overall_avg) <= AVG(f.rating) -- SQLite treats this as a constant filter\nGROUP BY s.supplier_id, s.name\nHAVING COUNT(f.review_id) >= 20\nORDER BY avg_rating DESC, s.supplier_id\nLIMIT 20",
+      "source": "llm",
+      "strategy": "Semi\u2011join with EXISTS for overall avg and pre\u2011filter product\u2011review join",
+      "rationale": "First compute the overall average in a scalar CTE (single scan). Then join suppliers only to products that have at least one review, and aggregate. The EXISTS eliminates products without reviews early, reducing rows processed. This keeps semantics identical while allowing SQLite to avoid the temporary GROUP BY B\u2011tree for the HAVING clause.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q15",
+      "sql": "SELECT\n  s.supplier_id,\n  s.name,\n  COUNT(r.review_id) AS review_count,\n  ROUND(AVG(r.rating), 3) AS avg_rating\nFROM suppliers AS s\nJOIN products AS p\n  ON p.supplier_id = s.supplier_id\nJOIN reviews AS r\n  ON r.product_id = p.product_id\nGROUP BY\n  s.supplier_id,\n  s.name\nHAVING\n  AVG(r.rating) >= (\n    SELECT\n      AVG(rating)\n    FROM reviews\n  )\n  AND COUNT(r.review_id) >= 20\nORDER BY\n  avg_rating DESC NULLS FIRST,\n  s.supplier_id NULLS LAST\nLIMIT 20",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q15",
+      "sql": "SELECT\n  s.supplier_id AS supplier_id,\n  s.name AS name,\n  COUNT(r.review_id) AS review_count,\n  ROUND(AVG(r.rating), 3) AS avg_rating\nFROM suppliers AS s\nJOIN products AS p\n  ON p.supplier_id = s.supplier_id\nJOIN reviews AS r\n  ON r.product_id = p.product_id\nCROSS JOIN (\n  SELECT\n    AVG(reviews.rating) AS q_col_0\n  FROM reviews AS reviews\n) AS q_u_0\nGROUP BY\n  s.supplier_id,\n  s.name\nHAVING\n  AVG(r.rating) >= MAX(q_u_0.q_col_0) AND COUNT(r.review_id) >= 20\nORDER BY\n  avg_rating DESC NULLS FIRST,\n  supplier_id NULLS LAST\nLIMIT 20",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q15",
+      "sql": "SELECT\n  s.supplier_id AS supplier_id,\n  s.name AS name,\n  COUNT(r.review_id) AS review_count,\n  ROUND(AVG(r.rating), 3) AS avg_rating\nFROM suppliers AS s\nJOIN products AS p\n  ON p.supplier_id = s.supplier_id\nJOIN reviews AS r\n  ON p.product_id = r.product_id\nGROUP BY\n  s.supplier_id,\n  s.name\nHAVING\n  AVG(r.rating) >= (\n    SELECT\n      AVG(reviews.rating) AS q_col_0\n    FROM reviews AS reviews\n  )\n  AND COUNT(r.review_id) >= 20\nORDER BY\n  avg_rating DESC NULLS FIRST,\n  supplier_id NULLS LAST\nLIMIT 20",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q15",
+      "sql": "WITH q_u_0 AS (\n  SELECT\n    AVG(reviews.rating) AS q_col_0\n  FROM reviews AS reviews\n)\nSELECT\n  s.supplier_id AS supplier_id,\n  s.name AS name,\n  COUNT(r.review_id) AS review_count,\n  ROUND(AVG(r.rating), 3) AS avg_rating\nFROM suppliers AS s\nCROSS JOIN q_u_0 AS q_u_0\nJOIN products AS p\n  ON p.supplier_id = s.supplier_id\nJOIN reviews AS r\n  ON p.product_id = r.product_id\nGROUP BY\n  s.supplier_id,\n  s.name\nHAVING\n  AVG(r.rating) >= MAX(q_u_0.q_col_0) AND COUNT(r.review_id) >= 20\nORDER BY\n  avg_rating DESC NULLS FIRST,\n  supplier_id NULLS LAST\nLIMIT 20",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L3R1",
+      "query_id": "Q15",
+      "sql": "WITH overall_avg AS (\n        SELECT AVG(rating) AS val\n        FROM reviews\n      ),\n      filtered AS (\n        SELECT p.supplier_id,\n               r.review_id,\n               r.rating\n        FROM products p\n        JOIN reviews r ON r.product_id = p.product_id\n      )\nSELECT s.supplier_id,\n       s.name,\n       COUNT(f.review_id) AS review_count,\n       ROUND(AVG(f.rating), 3) AS avg_rating\nFROM filtered f\nJOIN suppliers s ON s.supplier_id = f.supplier_id\nGROUP BY s.supplier_id, s.name\nHAVING AVG(f.rating) >= (SELECT val FROM overall_avg)\n   AND COUNT(f.review_id) >= 20\nORDER BY avg_rating DESC NULLS FIRST,\n         s.supplier_id NULLS LAST\nLIMIT 20",
+      "source": "repair",
+      "strategy": "Semi\u2011join with pre\u2011computed overall average moved to HAVING",
+      "rationale": "Compute the overall average rating once in a CTE and apply the comparison in the HAVING clause (where aggregates are allowed). The rest of the query remains unchanged, preserving the exact grouping, NULL handling, ordering (including NULL\u2011first/last), and LIMIT semantics.",
+      "parent_id": "L3",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q16": [
+    {
+      "id": "L1",
+      "query_id": "Q16",
+      "sql": "WITH order_summaries AS (\n    SELECT\n        oi.order_id,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS net_amount,\n        MIN(oi.order_id) AS dummy -- placeholder to keep row distinctness\n    FROM order_items AS oi\n    GROUP BY oi.order_id\n), filtered_orders AS (\n    SELECT\n        o.customer_id,\n        o.order_id,\n        o.order_date,\n        s.net_amount\n    FROM orders AS o\n    JOIN order_summaries AS s ON s.order_id = o.order_id\n    WHERE o.status IN ('DELIVERED', 'SHIPPED')\n), customer_stats AS (\n    SELECT\n        customer_id,\n        COUNT(*) AS n_orders,\n        SUM(net_amount) AS lifetime_value,\n        MIN(order_date) AS first_order,\n        MAX(order_date) AS last_order\n    FROM filtered_orders\n    GROUP BY customer_id\n)\nSELECT\n    c.customer_id,\n    c.name,\n    n.name AS nation,\n    cs.n_orders,\n    ROUND(cs.lifetime_value, 2) AS lifetime_value,\n    RANK() OVER (PARTITION BY c.nation_id ORDER BY ROUND(cs.lifetime_value, 2) DESC NULLS FIRST) AS nation_rank\nFROM customer_stats AS cs\nJOIN customers AS c ON c.customer_id = cs.customer_id\nJOIN nations AS n ON n.nation_id = c.nation_id\nWHERE cs.n_orders >= 3\nORDER BY\n    nation NULLS LAST,\n    nation_rank NULLS LAST,\n    c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Pre\u2011aggregate order_items then join orders",
+      "rationale": "By aggregating order_items per order first, we avoid the join\u2011group\u2011by pattern in the original CTE. The derived table is small (one row per order) and can be materialised once, letting SQLite use a simple index lookup on orders. This eliminates the temporary B\u2011Tree used for GROUP BY on the join and reduces I/O.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q16",
+      "sql": "WITH order_summaries AS (\n    SELECT\n        o.customer_id,\n        o.order_id,\n        o.order_date,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS net_amount\n    FROM orders AS o\n    JOIN order_items AS oi ON oi.order_id = o.order_id\n    WHERE o.status IN ('DELIVERED', 'SHIPPED')\n    GROUP BY o.customer_id, o.order_id, o.order_date\n)\nSELECT\n    c.customer_id,\n    c.name,\n    n.name AS nation,\n    COUNT(*) OVER (PARTITION BY cs.customer_id) AS n_orders,\n    ROUND(SUM(cs.net_amount) OVER (PARTITION BY cs.customer_id), 2) AS lifetime_value,\n    RANK() OVER (PARTITION BY c.nation_id ORDER BY ROUND(SUM(cs.net_amount) OVER (PARTITION BY cs.customer_id), 2) DESC NULLS FIRST) AS nation_rank\nFROM order_summaries AS cs\nJOIN customers AS c ON c.customer_id = cs.customer_id\nJOIN nations AS n ON n.nation_id = c.nation_id\nQUALIFY COUNT(*) OVER (PARTITION BY cs.customer_id) >= 3\nORDER BY\n    nation NULLS LAST,\n    nation_rank NULLS LAST,\n    c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Single\u2011pass aggregation with window function (no intermediate CTE)",
+      "rationale": "SQLite can compute per\u2011customer aggregates and ranking in one pass using a windowed SUM and COUNT over the pre\u2011aggregated order rows. This removes the materialisation of the `order_totals` CTE and the separate `customer_stats` CTE, cutting temporary B\u2011Tree usage and letting the planner stream rows directly to the final SELECT.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q16",
+      "sql": "SELECT\n    c.customer_id,\n    c.name,\n    n.name AS nation,\n    cs.n_orders,\n    ROUND(cs.lifetime_value, 2) AS lifetime_value,\n    RANK() OVER (PARTITION BY c.nation_id ORDER BY ROUND(cs.lifetime_value, 2) DESC NULLS FIRST) AS nation_rank\nFROM customers AS c\nJOIN nations AS n ON n.nation_id = c.nation_id\nJOIN (\n    SELECT\n        o.customer_id,\n        COUNT(*) AS n_orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS lifetime_value\n    FROM orders AS o\n    JOIN order_items AS oi ON oi.order_id = o.order_id\n    WHERE o.status IN ('DELIVERED', 'SHIPPED')\n    GROUP BY o.customer_id\n) AS cs ON cs.customer_id = c.customer_id\nWHERE cs.n_orders >= 3\nORDER BY\n    nation NULLS LAST,\n    nation_rank NULLS LAST,\n    c.customer_id NULLS LAST",
+      "source": "llm",
+      "strategy": "Correlated subqueries with EXISTS for order filter",
+      "rationale": "Using a correlated subquery to compute each customer's order count and lifetime value lets SQLite avoid materialising two CTEs and the intermediate GROUP BY on `order_totals`. The subqueries are sargable because they reference the primary\u2011key `customer_id`, and the engine can reuse the same scan of `order_items` per customer, which is efficient for the small data set.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q16",
+      "sql": "WITH order_totals AS (\n  SELECT\n    o.customer_id AS customer_id,\n    o.order_id AS order_id,\n    o.order_date AS order_date,\n    SUM(oi.quantity * oi.unit_price * (\n      1 - oi.discount\n    )) AS net_amount\n  FROM orders AS o\n  JOIN order_items AS oi\n    ON o.order_id = oi.order_id\n  WHERE\n    o.status IN ('DELIVERED', 'SHIPPED')\n  GROUP BY\n    o.customer_id,\n    o.order_id,\n    o.order_date\n), customer_stats AS (\n  SELECT\n    order_totals.customer_id AS customer_id,\n    COUNT(*) AS n_orders,\n    SUM(order_totals.net_amount) AS lifetime_value,\n    MIN(order_totals.order_date) AS first_order,\n    MAX(order_totals.order_date) AS last_order\n  FROM order_totals AS order_totals\n  GROUP BY\n    order_totals.customer_id\n)\nSELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  n.name AS nation,\n  cs.n_orders AS n_orders,\n  ROUND(cs.lifetime_value, 2) AS lifetime_value,\n  RANK() OVER (PARTITION BY c.nation_id ORDER BY ROUND(cs.lifetime_value, 2) DESC NULLS FIRST) AS nation_rank\nFROM customer_stats AS cs\nJOIN customers AS c\n  ON c.customer_id = cs.customer_id\nJOIN nations AS n\n  ON c.nation_id = n.nation_id\nWHERE\n  cs.n_orders >= 3\nORDER BY\n  nation NULLS LAST,\n  nation_rank NULLS LAST,\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q16",
+      "sql": "WITH order_totals AS (\n  SELECT\n    o.customer_id AS customer_id,\n    SUM(oi.quantity * oi.unit_price * (\n      1 - oi.discount\n    )) AS net_amount\n  FROM orders AS o\n  JOIN order_items AS oi\n    ON o.order_id = oi.order_id\n  WHERE\n    o.status IN ('DELIVERED', 'SHIPPED')\n  GROUP BY\n    o.customer_id,\n    o.order_id,\n    o.order_date\n), customer_stats AS (\n  SELECT\n    order_totals.customer_id AS customer_id,\n    COUNT(*) AS n_orders,\n    SUM(order_totals.net_amount) AS lifetime_value\n  FROM order_totals AS order_totals\n  GROUP BY\n    order_totals.customer_id\n)\nSELECT\n  c.customer_id AS customer_id,\n  c.name AS name,\n  n.name AS nation,\n  cs.n_orders AS n_orders,\n  ROUND(cs.lifetime_value, 2) AS lifetime_value,\n  RANK() OVER (PARTITION BY c.nation_id ORDER BY ROUND(cs.lifetime_value, 2) DESC NULLS FIRST) AS nation_rank\nFROM customer_stats AS cs\nJOIN customers AS c\n  ON c.customer_id = cs.customer_id\nJOIN nations AS n\n  ON c.nation_id = n.nation_id\nWHERE\n  cs.n_orders >= 3\nORDER BY\n  nation NULLS LAST,\n  nation_rank NULLS LAST,\n  c.customer_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L2R1",
+      "query_id": "Q16",
+      "sql": "WITH order_summaries AS (\n    SELECT\n        o.customer_id,\n        o.order_id,\n        o.order_date,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS net_amount\n    FROM orders AS o\n    JOIN order_items AS oi ON oi.order_id = o.order_id\n    WHERE o.status IN ('DELIVERED', 'SHIPPED')\n    GROUP BY o.customer_id, o.order_id, o.order_date\n)\nSELECT\n    t.customer_id,\n    t.name,\n    t.nation,\n    t.n_orders,\n    t.lifetime_value,\n    t.nation_rank\nFROM (\n    SELECT\n        c.customer_id,\n        c.name,\n        n.name AS nation,\n        COUNT(*) OVER (PARTITION BY cs.customer_id) AS n_orders,\n        ROUND(SUM(cs.net_amount) OVER (PARTITION BY cs.customer_id), 2) AS lifetime_value,\n        RANK() OVER (\n            PARTITION BY c.nation_id\n            ORDER BY ROUND(SUM(cs.net_amount) OVER (PARTITION BY cs.customer_id), 2) DESC NULLS FIRST\n        ) AS nation_rank\n    FROM order_summaries AS cs\n    JOIN customers AS c ON c.customer_id = cs.customer_id\n    JOIN nations AS n ON n.nation_id = c.nation_id\n) AS t\nWHERE t.n_orders >= 3\nORDER BY\n    t.nation NULLS LAST,\n    t.nation_rank NULLS LAST,\n    t.customer_id NULLS LAST",
+      "source": "repair",
+      "strategy": "Single\u2011pass aggregation with window functions (no intermediate CTE)",
+      "rationale": "SQLite supports window functions but not the QUALIFY clause. By moving the filter on the window\u2011derived column into an outer SELECT we keep the single\u2011pass aggregation while preserving the original semantics. The COUNT(*) window gives the number of orders per customer because the inner CTE already contains one row per order.",
+      "parent_id": "L2",
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3R1",
+      "query_id": "Q16",
+      "sql": "SELECT\n    c.customer_id,\n    c.name,\n    n.name AS nation,\n    cs.n_orders,\n    ROUND(cs.lifetime_value, 2) AS lifetime_value,\n    RANK() OVER (\n        PARTITION BY c.nation_id\n        ORDER BY ROUND(cs.lifetime_value, 2) DESC NULLS FIRST\n    ) AS nation_rank\nFROM customers AS c\nJOIN nations AS n ON n.nation_id = c.nation_id\nJOIN (\n    SELECT\n        o.customer_id,\n        COUNT(DISTINCT o.order_id) AS n_orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS lifetime_value\n    FROM orders AS o\n    JOIN order_items AS oi ON oi.order_id = o.order_id\n    WHERE o.status IN ('DELIVERED', 'SHIPPED')\n    GROUP BY o.customer_id\n) AS cs ON cs.customer_id = c.customer_id\nWHERE cs.n_orders >= 3\nORDER BY\n    nation NULLS LAST,\n    nation_rank NULLS LAST,\n    c.customer_id NULLS LAST",
+      "source": "repair",
+      "strategy": "Correlated subqueries with DISTINCT count for correct order count",
+      "rationale": "The original mistake counted order\u2011item rows instead of orders. Using COUNT(DISTINCT o.order_id) yields the exact number of qualifying orders per customer, matching the original CTE logic. All other columns remain unchanged, preserving NULL handling and rounding.",
+      "parent_id": "L3",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q17": [
+    {
+      "id": "L1",
+      "query_id": "Q17",
+      "sql": "WITH monthly AS (\n    SELECT\n        CAST(STRFTIME('%Y', o.order_date) AS INTEGER) AS yr,\n        CAST(STRFTIME('%m', o.order_date) AS INTEGER) AS mon,\n        ROUND(SUM(o.total_amount), 2) AS revenue\n    FROM orders AS o\n    WHERE o.status <> 'CANCELLED'\n    GROUP BY yr, mon\n)\nSELECT\n    m.yr,\n    m.mon,\n    m.revenue,\n    ROUND(SUM(m.revenue) OVER (PARTITION BY m.yr ORDER BY m.mon ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW), 2) AS ytd_revenue\nFROM monthly AS m\nORDER BY m.yr NULLS LAST, m.mon NULLS LAST",
+      "source": "llm",
+      "strategy": "window\u2011function cumulative sum",
+      "rationale": "Computes the year\u2011to\u2011date revenue with a single window SUM over the pre\u2011aggregated monthly totals, eliminating the correlated scalar subquery and its repeated scan of the orders table.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q17",
+      "sql": "WITH monthly AS (\n    SELECT\n        CAST(STRFTIME('%Y', o.order_date) AS INTEGER) AS yr,\n        CAST(STRFTIME('%m', o.order_date) AS INTEGER) AS mon,\n        ROUND(SUM(o.total_amount), 2) AS revenue\n    FROM orders AS o\n    WHERE o.status <> 'CANCELLED'\n    GROUP BY yr, mon\n)\nSELECT\n    m1.yr,\n    m1.mon,\n    m1.revenue,\n    ROUND(COALESCE(SUM(m2.revenue), 0), 2) AS ytd_revenue\nFROM monthly AS m1\nLEFT JOIN monthly AS m2\n    ON m2.yr = m1.yr AND m2.mon <= m1.mon\nGROUP BY m1.yr, m1.mon, m1.revenue\nORDER BY m1.yr NULLS LAST, m1.mon NULLS LAST",
+      "source": "llm",
+      "strategy": "self\u2011join cumulative aggregation",
+      "rationale": "Aggregates monthly revenue once, then joins the result set to itself on matching year and month \u2264 current month, allowing the optimizer to use a single hash\u2011aggregate for the cumulative total instead of repeatedly scanning the orders table.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q17",
+      "sql": "WITH RECURSIVE monthly AS (\n    SELECT\n        CAST(STRFTIME('%Y', o.order_date) AS INTEGER) AS yr,\n        CAST(STRFTIME('%m', o.order_date) AS INTEGER) AS mon,\n        ROUND(SUM(o.total_amount), 2) AS revenue\n    FROM orders AS o\n    WHERE o.status <> 'CANCELLED'\n    GROUP BY yr, mon\n), ordered AS (\n    SELECT *\n    FROM monthly\n    ORDER BY yr, mon\n), running AS (\n    SELECT\n        yr,\n        mon,\n        revenue,\n        revenue AS ytd_revenue\n    FROM ordered\n    WHERE (yr, mon) = (\n        SELECT yr, mon FROM ordered ORDER BY yr, mon LIMIT 1\n    )\n    UNION ALL\n    SELECT\n        o.yr,\n        o.mon,\n        o.revenue,\n        ROUND(r.ytd_revenue + o.revenue, 2) AS ytd_revenue\n    FROM ordered o\n    JOIN running r ON (\n        o.yr = r.yr AND o.mon = r.mon + 1\n    )\n    UNION ALL\n    SELECT\n        o.yr,\n        o.mon,\n        o.revenue,\n        ROUND(r.ytd_revenue + o.revenue, 2) AS ytd_revenue\n    FROM ordered o\n    JOIN running r ON (\n        o.yr = r.yr + 1 AND r.mon = 12 AND o.mon = 1\n    )\n)\nSELECT yr, mon, revenue, ytd_revenue\nFROM running\nORDER BY yr NULLS LAST, mon NULLS LAST",
+      "source": "llm",
+      "strategy": "recursive CTE running total",
+      "rationale": "Builds the YTD revenue by iterating months in chronological order per year, adding each month\u2019s revenue to the previous total; this avoids correlated subqueries and can be efficient with the small cardinality of years/months.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q17",
+      "sql": "WITH m AS (\n  SELECT\n    CAST(STRFTIME('%Y', o.order_date) AS INTEGER) AS yr,\n    CAST(STRFTIME('%m', o.order_date) AS INTEGER) AS mon,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    CAST(STRFTIME('%Y', o.order_date) AS INTEGER),\n    CAST(STRFTIME('%m', o.order_date) AS INTEGER)\n)\nSELECT\n  m.yr,\n  m.mon,\n  m.revenue,\n  (\n    SELECT\n      ROUND(SUM(o2.total_amount), 2)\n    FROM orders AS o2\n    WHERE\n      o2.status <> 'CANCELLED'\n      AND CAST(STRFTIME('%Y', o2.order_date) AS INTEGER) = m.yr\n      AND CAST(STRFTIME('%m', o2.order_date) AS INTEGER) <= m.mon\n  ) AS ytd_revenue\nFROM m AS m\nORDER BY\n  m.yr NULLS LAST,\n  m.mon NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q17",
+      "sql": "SELECT\n  m.yr AS yr,\n  m.mon AS mon,\n  m.revenue AS revenue,\n  (\n    SELECT\n      ROUND(SUM(o2.total_amount), 2) AS q_col_0\n    FROM orders AS o2\n    WHERE\n      m.mon >= CAST(STRFTIME('%m', o2.order_date) AS INTEGER)\n      AND m.yr = CAST(STRFTIME('%Y', o2.order_date) AS INTEGER)\n      AND o2.status <> 'CANCELLED'\n  ) AS ytd_revenue\nFROM (\n  SELECT\n    CAST(STRFTIME('%Y', o.order_date) AS INTEGER) AS yr,\n    CAST(STRFTIME('%m', o.order_date) AS INTEGER) AS mon,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    CAST(STRFTIME('%Y', o.order_date) AS INTEGER),\n    CAST(STRFTIME('%m', o.order_date) AS INTEGER)\n) AS m\nORDER BY\n  m.yr NULLS LAST,\n  m.mon NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q17",
+      "sql": "WITH m AS (\n  SELECT\n    CAST(STRFTIME('%Y', o.order_date) AS INTEGER) AS yr,\n    CAST(STRFTIME('%m', o.order_date) AS INTEGER) AS mon,\n    ROUND(SUM(o.total_amount), 2) AS revenue\n  FROM orders AS o\n  WHERE\n    o.status <> 'CANCELLED'\n  GROUP BY\n    CAST(STRFTIME('%Y', o.order_date) AS INTEGER),\n    CAST(STRFTIME('%m', o.order_date) AS INTEGER)\n)\nSELECT\n  m.yr AS yr,\n  m.mon AS mon,\n  m.revenue AS revenue,\n  (\n    SELECT\n      ROUND(SUM(o2.total_amount), 2) AS q_col_0\n    FROM orders AS o2\n    WHERE\n      m.mon >= CAST(STRFTIME('%m', o2.order_date) AS INTEGER)\n      AND m.yr = CAST(STRFTIME('%Y', o2.order_date) AS INTEGER)\n      AND o2.status <> 'CANCELLED'\n  ) AS ytd_revenue\nFROM m AS m\nORDER BY\n  m.yr NULLS LAST,\n  m.mon NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L3R1",
+      "query_id": "Q17",
+      "sql": "WITH orders_clean AS (\n  SELECT\n    CAST(STRFTIME('%Y', order_date) AS INTEGER) AS yr,\n    CAST(STRFTIME('%m', order_date) AS INTEGER) AS mon,\n    total_amount\n  FROM orders\n  WHERE status <> 'CANCELLED'\n),\nmonthly AS (\n  SELECT\n    yr,\n    mon,\n    ROUND(SUM(total_amount), 2) AS revenue,\n    ROUND(SUM(SUM(total_amount)) OVER (\n            PARTITION BY yr\n            ORDER BY mon\n            ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW\n          ), 2) AS ytd_revenue\n  FROM orders_clean\n  GROUP BY yr, mon\n)\nSELECT yr, mon, revenue, ytd_revenue\nFROM monthly\nORDER BY yr NULLS LAST, mon NULLS LAST",
+      "source": "repair",
+      "strategy": "window function cumulative total",
+      "rationale": "Replace the recursive CTE with a single\u2011pass aggregation that computes the monthly revenue and the year\u2011to\u2011date revenue using a window SUM. The window operates on the raw total_amount values (before rounding) so the YTD matches the original ROUND(SUM(...),2). This eliminates the recursive joins and produces the same 60 rows with correct values.",
+      "parent_id": "L3",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q18": [
+    {
+      "id": "L1",
+      "query_id": "Q18",
+      "sql": "SELECT\n  o.order_id,\n  o.status,\n  o.total_amount,\n  COALESCE(p.ok_sum, 0) AS paid,\n  CASE WHEN p.has_failed = 1 THEN 'Y' ELSE 'N' END AS had_failure\nFROM orders AS o\nLEFT JOIN (\n  SELECT\n    order_id,\n    SUM(CASE WHEN status = 'OK' THEN amount ELSE 0 END) AS ok_sum,\n    MAX(CASE WHEN status = 'FAILED' THEN 1 ELSE 0 END) AS has_failed\n  FROM payments\n  GROUP BY order_id\n) AS p ON p.order_id = o.order_id\nWHERE o.status IN ('PENDING', 'SHIPPED')\n  AND o.order_date >= '2025-01-01'\n  AND COALESCE(p.ok_sum, 0) < o.total_amount\nORDER BY o.order_id",
+      "source": "llm",
+      "strategy": "single\u2011pass aggregation join",
+      "rationale": "Aggregate all payments per order once, computing both the OK sum and a flag for any FAILED payment. Joining this pre\u2011aggregated result eliminates three correlated subqueries, allowing SQLite to scan payments only once and use a hash\u2011aggregate.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q18",
+      "sql": "SELECT\n  o.order_id,\n  o.status,\n  o.total_amount,\n  COALESCE(ok.ok_total, 0) AS paid,\n  CASE WHEN fail.order_id IS NOT NULL THEN 'Y' ELSE 'N' END AS had_failure\nFROM orders AS o\nLEFT JOIN (\n  SELECT order_id, SUM(amount) AS ok_total\n  FROM payments\n  WHERE status = 'OK'\n  GROUP BY order_id\n) AS ok ON ok.order_id = o.order_id\nLEFT JOIN (\n  SELECT DISTINCT order_id\n  FROM payments\n  WHERE status = 'FAILED'\n) AS fail ON fail.order_id = o.order_id\nWHERE o.status IN ('PENDING', 'SHIPPED')\n  AND o.order_date >= '2025-01-01'\n  AND COALESCE(ok.ok_total, 0) < o.total_amount\nORDER BY o.order_id",
+      "source": "llm",
+      "strategy": "two\u2011step join (separate OK sum & failure flag)",
+      "rationale": "Split the aggregation into two small derived tables \u2013 one for the OK total and one for the existence of a FAILED payment \u2013 so each can use a simple GROUP BY and the planner may materialise the smaller set first. This still avoids repeated subqueries while keeping the logic transparent.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q18",
+      "sql": "WITH payment_stats AS (\n  SELECT\n    p.order_id,\n    SUM(CASE WHEN p.status = 'OK' THEN p.amount END) OVER (PARTITION BY p.order_id) AS ok_sum,\n    MAX(CASE WHEN p.status = 'FAILED' THEN 1 END) OVER (PARTITION BY p.order_id) AS has_failed\n  FROM payments AS p\n  GROUP BY p.order_id, p.payment_id -- force distinct rows\n)\nSELECT\n  o.order_id,\n  o.status,\n  o.total_amount,\n  COALESCE(ps.ok_sum, 0) AS paid,\n  CASE WHEN ps.has_failed = 1 THEN 'Y' ELSE 'N' END AS had_failure\nFROM orders AS o\nLEFT JOIN (\n  SELECT DISTINCT order_id, ok_sum, has_failed\n  FROM payment_stats\n) AS ps ON ps.order_id = o.order_id\nWHERE o.status IN ('PENDING', 'SHIPPED')\n  AND o.order_date >= '2025-01-01'\n  AND COALESCE(ps.ok_sum, 0) < o.total_amount\nORDER BY o.order_id",
+      "source": "llm",
+      "strategy": "window\u2011function based aggregation",
+      "rationale": "Use window functions to compute the OK sum and failure flag across all payments, then filter orders in a single query. SQLite can evaluate the window once, avoiding explicit GROUP BY and multiple joins, which may be faster for the modest data size.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q18",
+      "sql": "SELECT\n  o.order_id,\n  o.status,\n  o.total_amount,\n  COALESCE(\n    (\n      SELECT\n        SUM(p.amount)\n      FROM payments AS p\n      WHERE\n        p.order_id = o.order_id AND p.status = 'OK'\n    ),\n    0\n  ) AS paid,\n  CASE\n    WHEN o.order_id IN (\n      SELECT\n        p.order_id\n      FROM payments AS p\n      WHERE\n        p.status = 'FAILED'\n    )\n    THEN 'Y'\n    ELSE 'N'\n  END AS had_failure\nFROM orders AS o\nWHERE\n  o.status IN ('PENDING', 'SHIPPED')\n  AND o.order_date >= '2025-01-01'\n  AND COALESCE(\n    (\n      SELECT\n        SUM(p.amount)\n      FROM payments AS p\n      WHERE\n        p.order_id = o.order_id AND p.status = 'OK'\n    ),\n    0\n  ) < o.total_amount\nORDER BY\n  o.order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "exists_to_in",
+      "rationale": "Rewrites a correlated [NOT] EXISTS with an equality correlation as an uncorrelated [NOT] IN.",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q18",
+      "sql": "SELECT\n  o.order_id,\n  o.status,\n  o.total_amount,\n  COALESCE(\n    (\n      SELECT\n        SUM(p.amount)\n      FROM payments AS p\n      WHERE\n        p.order_id = o.order_id AND p.status = 'OK'\n    ),\n    0\n  ) AS paid,\n  CASE\n    WHEN EXISTS(\n      SELECT\n        1\n      FROM payments AS p\n      WHERE\n        p.order_id = o.order_id AND p.status = 'FAILED'\n    )\n    THEN 'Y'\n    ELSE 'N'\n  END AS had_failure\nFROM orders AS o\nWHERE\n  o.status IN ('PENDING', 'SHIPPED')\n  AND o.order_date >= '2025-01-01'\n  AND COALESCE(\n    (\n      SELECT\n        SUM(p.amount)\n      FROM payments AS p\n      WHERE\n        p.order_id = o.order_id AND p.status = 'OK'\n    ),\n    0\n  ) < o.total_amount\nORDER BY\n  o.order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "subqueries_to_ctes",
+      "rationale": "Hoists derived tables / subqueries into WITH clauses (sqlglot eliminate_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q18",
+      "sql": "SELECT\n  o.order_id AS order_id,\n  o.status AS status,\n  o.total_amount AS total_amount,\n  COALESCE(\n    (\n      SELECT\n        SUM(p.amount) AS q_col_0\n      FROM payments AS p\n      WHERE\n        p.order_id = o.order_id AND p.status = 'OK'\n    ),\n    0\n  ) AS paid,\n  CASE WHEN NOT q_u_2.q_u_3 IS NULL THEN 'Y' ELSE 'N' END AS had_failure\nFROM orders AS o\nLEFT JOIN (\n  SELECT\n    p.order_id AS q_u_3\n  FROM payments AS p\n  WHERE\n    TRUE AND p.status = 'FAILED'\n  GROUP BY\n    p.order_id\n) AS q_u_2\n  ON q_u_2.q_u_3 = o.order_id\nLEFT JOIN (\n  SELECT\n    SUM(p.amount) AS q_col_0,\n    p.order_id AS q_u_5\n  FROM payments AS p\n  WHERE\n    TRUE AND p.status = 'OK'\n  GROUP BY\n    p.order_id\n) AS q_u_4\n  ON q_u_4.q_u_5 = o.order_id\nWHERE\n  o.status IN ('PENDING', 'SHIPPED')\n  AND o.order_date >= '2025-01-01'\n  AND COALESCE(q_u_4.q_col_0, 0) < o.total_amount\nORDER BY\n  o.order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "decorrelate_subqueries",
+      "rationale": "Unnests correlated subqueries into joins against grouped derived tables (sqlglot unnest_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R4",
+      "query_id": "Q18",
+      "sql": "SELECT\n  o.order_id AS order_id,\n  o.status AS status,\n  o.total_amount AS total_amount,\n  COALESCE(\n    (\n      SELECT\n        SUM(p.amount) AS q_col_0\n      FROM payments AS p\n      WHERE\n        o.order_id = p.order_id AND p.status = 'OK'\n    ),\n    0\n  ) AS paid,\n  CASE\n    WHEN EXISTS(\n      SELECT\n        1 AS \"1\"\n      FROM payments AS p\n      WHERE\n        o.order_id = p.order_id AND p.status = 'FAILED'\n    )\n    THEN 'Y'\n    ELSE 'N'\n  END AS had_failure\nFROM orders AS o\nWHERE\n  o.order_date >= '2025-01-01'\n  AND o.status IN ('PENDING', 'SHIPPED')\n  AND o.total_amount > COALESCE(\n    (\n      SELECT\n        SUM(p.amount) AS q_col_0\n      FROM payments AS p\n      WHERE\n        o.order_id = p.order_id AND p.status = 'OK'\n    ),\n    0\n  )\nORDER BY\n  o.order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R5",
+      "query_id": "Q18",
+      "sql": "WITH q_u_2 AS (\n  SELECT\n    p.order_id AS q_u_3\n  FROM payments AS p\n  WHERE\n    p.status = 'FAILED'\n  GROUP BY\n    p.order_id\n), q_u_4 AS (\n  SELECT\n    SUM(p.amount) AS q_col_0,\n    p.order_id AS q_u_5\n  FROM payments AS p\n  WHERE\n    p.status = 'OK'\n  GROUP BY\n    p.order_id\n)\nSELECT\n  o.order_id AS order_id,\n  o.status AS status,\n  o.total_amount AS total_amount,\n  COALESCE(\n    (\n      SELECT\n        SUM(p.amount) AS q_col_0\n      FROM payments AS p\n      WHERE\n        o.order_id = p.order_id AND p.status = 'OK'\n    ),\n    0\n  ) AS paid,\n  CASE WHEN NOT q_u_2.q_u_3 IS NULL THEN 'Y' ELSE 'N' END AS had_failure\nFROM orders AS o\nLEFT JOIN q_u_2 AS q_u_2\n  ON q_u_2.q_u_3 = o.order_id\nLEFT JOIN q_u_4 AS q_u_4\n  ON q_u_4.q_u_5 = o.order_id\nWHERE\n  o.order_date >= DATE('2025-01-01')\n  AND o.status IN ('PENDING', 'SHIPPED')\n  AND o.total_amount > COALESCE(q_u_4.q_col_0, 0)\nORDER BY\n  o.order_id NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    }
+  ],
+  "Q19": [
+    {
+      "id": "L1",
+      "query_id": "Q19",
+      "sql": "WITH filtered_orders AS (\n    SELECT order_id\n    FROM orders\n    WHERE order_date >= '2024-01-01'\n      AND order_date < '2025-01-01'\n      AND status <> 'CANCELLED'\n)\nSELECT\n    parent.name   AS top_category,\n    child.name    AS category,\n    COUNT(DISTINCT p.product_id) AS products,\n    COUNT(DISTINCT oi.order_id)   AS orders,\n    ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS net_revenue\nFROM categories AS child\nJOIN categories AS parent ON parent.category_id = child.parent_category_id\nJOIN products    AS p      ON p.category_id = child.category_id\nJOIN order_items AS oi     ON oi.product_id = p.product_id\nJOIN filtered_orders fo   ON fo.order_id = oi.order_id\nGROUP BY parent.name, child.name\nUNION ALL\nSELECT\n    parent.name,\n    'ALL',\n    COUNT(DISTINCT p.product_id),\n    COUNT(DISTINCT oi.order_id),\n    ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2)\nFROM categories AS child\nJOIN categories AS parent ON parent.category_id = child.parent_category_id\nJOIN products    AS p      ON p.category_id = child.category_id\nJOIN order_items AS oi     ON oi.product_id = p.product_id\nJOIN filtered_orders fo   ON fo.order_id = oi.order_id\nGROUP BY parent.name\nORDER BY 1 NULLS LAST, 2 NULLS LAST",
+      "source": "llm",
+      "strategy": "CTE\u2011filter\u2011orders",
+      "rationale": "The original query scans the orders table twice (once per side of the UNION ALL). By materialising the 2024 non\u2011cancelled orders in a CTE we join to it only once per side, letting SQLite reuse the filtered rows and avoid repeated BLOOM FILTER work. The semantics are unchanged because the CTE contains exactly the same rows as the original WHERE clause.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q19",
+      "sql": "WITH filtered_orders AS (\n    SELECT order_id\n    FROM orders\n    WHERE order_date >= '2024-01-01'\n      AND order_date < '2025-01-01'\n      AND status <> 'CANCELLED'\n),\nchild_agg AS (\n    SELECT\n        parent.name   AS top_category,\n        child.name    AS category,\n        COUNT(DISTINCT p.product_id) AS products,\n        COUNT(DISTINCT oi.order_id)   AS orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS revenue_raw\n    FROM categories AS child\n    JOIN categories AS parent ON parent.category_id = child.parent_category_id\n    JOIN products    AS p      ON p.category_id = child.category_id\n    JOIN order_items AS oi     ON oi.product_id = p.product_id\n    JOIN filtered_orders fo   ON fo.order_id = oi.order_id\n    GROUP BY parent.name, child.name\n)\nSELECT\n    top_category,\n    category,\n    products,\n    orders,\n    ROUND(revenue_raw, 2) AS net_revenue\nFROM child_agg\nUNION ALL\nSELECT\n    top_category,\n    'ALL',\n    SUM(products) AS products,\n    SUM(orders)   AS orders,\n    ROUND(SUM(revenue_raw), 2) AS net_revenue\nFROM child_agg\nGROUP BY top_category\nORDER BY 1 NULLS LAST, 2 NULLS LAST",
+      "source": "llm",
+      "strategy": "pre\u2011aggregate\u2011child\u2011then\u2011rollup",
+      "rationale": "First compute the child\u2011level metrics once (including distinct product and order counts). The parent\u2011level totals can then be derived from that result set by simple aggregation, eliminating the second full join chain. Because each product belongs to a single child category, summing the child distinct counts yields the correct parent distinct counts, and summing revenue is additive, preserving exact semantics while cutting the work roughly in half.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q19",
+      "sql": "WITH filtered_orders AS (\n    SELECT order_id\n    FROM orders\n    WHERE order_date >= '2024-01-01'\n      AND order_date < '2025-01-01'\n      AND status <> 'CANCELLED'\n),\nchild_stats AS (\n    SELECT\n        parent.name   AS top_category,\n        child.name    AS category,\n        COUNT(DISTINCT p.product_id) AS products,\n        COUNT(DISTINCT oi.order_id)   AS orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS revenue_raw\n    FROM categories AS child\n    JOIN categories AS parent ON parent.category_id = child.parent_category_id\n    JOIN products    AS p      ON p.category_id = child.category_id\n    JOIN order_items AS oi     ON oi.product_id = p.product_id\n    JOIN filtered_orders fo   ON fo.order_id = oi.order_id\n    GROUP BY parent.name, child.name\n),\nwith_parent AS (\n    SELECT\n        top_category,\n        category,\n        products,\n        orders,\n        revenue_raw,\n        SUM(products)   OVER (PARTITION BY top_category) AS parent_products,\n        SUM(orders)     OVER (PARTITION BY top_category) AS parent_orders,\n        SUM(revenue_raw)OVER (PARTITION BY top_category) AS parent_revenue,\n        ROW_NUMBER() OVER (PARTITION BY top_category ORDER BY category) AS rn_child,\n        ROW_NUMBER() OVER (PARTITION BY top_category ORDER BY NULL) AS rn_parent\n    FROM child_stats\n)\nSELECT\n    top_category,\n    category,\n    products,\n    orders,\n    ROUND(revenue_raw, 2) AS net_revenue\nFROM with_parent\nWHERE rn_child = 1\nUNION ALL\nSELECT\n    top_category,\n    'ALL',\n    parent_products,\n    parent_orders,\n    ROUND(parent_revenue, 2) AS net_revenue\nFROM with_parent\nWHERE rn_parent = 1\nORDER BY 1 NULLS LAST, 2 NULLS LAST",
+      "source": "llm",
+      "strategy": "window\u2011function roll\u2011up",
+      "rationale": "SQLite supports window functions, which we can use to compute the parent totals over the already\u2011grouped child rows without a second join. After the child aggregation we add a window SUM over the partition by top_category, then select distinct rows for the child level and a single row per parent (using ROW_NUMBER). This removes the duplicate scan of the fact tables and keeps all calculations in one pass.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q19",
+      "sql": "SELECT\n  parent.name AS top_category,\n  child.name AS category,\n  COUNT(DISTINCT p.product_id) AS products,\n  COUNT(DISTINCT oi.order_id) AS orders,\n  ROUND(SUM(oi.quantity * oi.unit_price * (\n    1 - oi.discount\n  )), 2) AS net_revenue\nFROM categories AS child\nJOIN categories AS parent\n  ON child.parent_category_id = parent.category_id\nJOIN products AS p\n  ON child.category_id = p.category_id\nJOIN order_items AS oi\n  ON oi.product_id = p.product_id\nJOIN orders AS o\n  ON o.order_date < '2025-01-01'\n  AND o.order_date >= '2024-01-01'\n  AND o.order_id = oi.order_id\n  AND o.status <> 'CANCELLED'\nWHERE\n  TRUE AND TRUE AND TRUE\nGROUP BY\n  parent.name,\n  child.name\nUNION ALL\nSELECT\n  parent.name AS name,\n  'ALL' AS all,\n  COUNT(DISTINCT p.product_id) AS q_col_2,\n  COUNT(DISTINCT oi.order_id) AS q_col_3,\n  ROUND(SUM(oi.quantity * oi.unit_price * (\n    1 - oi.discount\n  )), 2) AS q_col_4\nFROM categories AS child\nJOIN categories AS parent\n  ON child.parent_category_id = parent.category_id\nJOIN products AS p\n  ON child.category_id = p.category_id\nJOIN order_items AS oi\n  ON oi.product_id = p.product_id\nJOIN orders AS o\n  ON o.order_date < '2025-01-01'\n  AND o.order_date >= '2024-01-01'\n  AND o.order_id = oi.order_id\n  AND o.status <> 'CANCELLED'\nWHERE\n  TRUE AND TRUE AND TRUE\nGROUP BY\n  parent.name\nORDER BY\n  top_category NULLS LAST,\n  category NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q19",
+      "sql": "SELECT\n  parent.name AS top_category,\n  child.name AS category,\n  COUNT(DISTINCT p.product_id) AS products,\n  COUNT(DISTINCT oi.order_id) AS orders,\n  ROUND(SUM(oi.quantity * oi.unit_price * (\n    1 - oi.discount\n  )), 2) AS net_revenue\nFROM categories AS child\nJOIN products AS p\n  ON child.category_id = p.category_id\nJOIN categories AS parent\n  ON child.parent_category_id = parent.category_id\nJOIN order_items AS oi\n  ON oi.product_id = p.product_id\nJOIN orders AS o\n  ON o.order_date < DATE('2025-01-01')\n  AND o.order_date >= DATE('2024-01-01')\n  AND o.order_id = oi.order_id\n  AND o.status <> 'CANCELLED'\nGROUP BY\n  parent.name,\n  child.name\nUNION ALL\nSELECT\n  parent.name AS name,\n  'ALL' AS all,\n  COUNT(DISTINCT p.product_id) AS q_col_2,\n  COUNT(DISTINCT oi.order_id) AS q_col_3,\n  ROUND(SUM(oi.quantity * oi.unit_price * (\n    1 - oi.discount\n  )), 2) AS q_col_4\nFROM categories AS child\nJOIN products AS p\n  ON child.category_id = p.category_id\nJOIN categories AS parent\n  ON child.parent_category_id = parent.category_id\nJOIN order_items AS oi\n  ON oi.product_id = p.product_id\nJOIN orders AS o\n  ON o.order_date < DATE('2025-01-01')\n  AND o.order_date >= DATE('2024-01-01')\n  AND o.order_id = oi.order_id\n  AND o.status <> 'CANCELLED'\nGROUP BY\n  parent.name\nORDER BY\n  top_category NULLS LAST,\n  category NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L2R1",
+      "query_id": "Q19",
+      "sql": "WITH filtered_orders AS (\n    SELECT order_id\n    FROM orders\n    WHERE order_date >= '2024-01-01'\n      AND order_date < '2025-01-01'\n      AND status <> 'CANCELLED'\n),\nchild_agg AS (\n    SELECT\n        parent.name   AS top_category,\n        child.name    AS category,\n        COUNT(DISTINCT p.product_id)                         AS products,\n        COUNT(DISTINCT oi.order_id)                          AS orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS revenue_raw\n    FROM categories AS child\n    JOIN categories AS parent ON parent.category_id = child.parent_category_id\n    JOIN products    AS p      ON p.category_id = child.category_id\n    JOIN order_items AS oi     ON oi.product_id = p.product_id\n    JOIN filtered_orders fo   ON fo.order_id = oi.order_id\n    GROUP BY parent.name, child.name\n),\nparent_agg AS (\n    SELECT\n        parent.name   AS top_category,\n        COUNT(DISTINCT p.product_id)                         AS products,\n        COUNT(DISTINCT oi.order_id)                          AS orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS revenue_raw\n    FROM categories AS child\n    JOIN categories AS parent ON parent.category_id = child.parent_category_id\n    JOIN products    AS p      ON p.category_id = child.category_id\n    JOIN order_items AS oi     ON oi.product_id = p.product_id\n    JOIN filtered_orders fo   ON fo.order_id = oi.order_id\n    GROUP BY parent.name\n)\nSELECT\n    top_category,\n    category,\n    products,\n    orders,\n    ROUND(revenue_raw, 2) AS net_revenue\nFROM child_agg\nUNION ALL\nSELECT\n    top_category,\n    'ALL',\n    products,\n    orders,\n    ROUND(revenue_raw, 2) AS net_revenue\nFROM parent_agg\nORDER BY 1 NULLS LAST, 2 NULLS LAST",
+      "source": "repair",
+      "strategy": "pre\u2011aggregate\u2011child\u2011then\u2011separate\u2011parent\u2011rollup",
+      "rationale": "Keep the efficient per\u2011child aggregation but compute the parent\u2011level totals in a separate CTE that joins the same filtered tables and groups only by the top category. This avoids the double\u2011counting of distinct orders that occurred when the parent rows were derived by summing the child\u2011level DISTINCT counts. The query remains a single\u2011pass scan of the filtered orders for each CTE and uses only the primary\u2011key joins, preserving all NULL and bag semantics.",
+      "parent_id": "L2",
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3R1",
+      "query_id": "Q19",
+      "sql": "WITH filtered_orders AS (\n    SELECT order_id\n    FROM orders\n    WHERE order_date >= '2024-01-01'\n      AND order_date < '2025-01-01'\n      AND status <> 'CANCELLED'\n),\nchild_stats AS (\n    SELECT\n        parent.name   AS top_category,\n        child.name    AS category,\n        COUNT(DISTINCT p.product_id)                         AS products,\n        COUNT(DISTINCT oi.order_id)                          AS orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS revenue_raw\n    FROM categories AS child\n    JOIN categories AS parent ON parent.category_id = child.parent_category_id\n    JOIN products    AS p      ON p.category_id = child.category_id\n    JOIN order_items AS oi     ON oi.product_id = p.product_id\n    JOIN filtered_orders fo   ON fo.order_id = oi.order_id\n    GROUP BY parent.name, child.name\n),\nparent_agg AS (\n    SELECT\n        parent.name   AS top_category,\n        COUNT(DISTINCT p.product_id)                         AS products,\n        COUNT(DISTINCT oi.order_id)                          AS orders,\n        SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS revenue_raw\n    FROM categories AS child\n    JOIN categories AS parent ON parent.category_id = child.parent_category_id\n    JOIN products    AS p      ON p.category_id = child.category_id\n    JOIN order_items AS oi     ON oi.product_id = p.product_id\n    JOIN filtered_orders fo   ON fo.order_id = oi.order_id\n    GROUP BY parent.name\n),\nwith_parent AS (\n    SELECT\n        top_category,\n        category,\n        products,\n        orders,\n        revenue_raw,\n        ROW_NUMBER() OVER (PARTITION BY top_category ORDER BY category) AS rn_child\n    FROM child_stats\n)\nSELECT\n    top_category,\n    category,\n    products,\n    orders,\n    ROUND(revenue_raw, 2) AS net_revenue\nFROM with_parent\nWHERE rn_child = 1\nUNION ALL\nSELECT\n    top_category,\n    'ALL',\n    products,\n    orders,\n    ROUND(revenue_raw, 2) AS net_revenue\nFROM parent_agg\nORDER BY 1 NULLS LAST, 2 NULLS LAST",
+      "source": "repair",
+      "strategy": "window\u2011function\u2011rollup\u2011with\u2011separate\u2011parent\u2011CTE",
+      "rationale": "Window functions are kept for the child rows, but the parent\u2011level row is produced from a distinct CTE that recomputes the aggregates at the top\u2011category level. This restores the correct DISTINCT counts for orders and products while still allowing the child\u2011level computation to be performed once and then projected. The plan still benefits from the window functions for ordering, and the additional parent CTE is cheap because it reads the already\u2011filtered rows.",
+      "parent_id": "L3",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ],
+  "Q20": [
+    {
+      "id": "L1",
+      "query_id": "Q20",
+      "sql": "WITH orders_filtered AS (\n  SELECT order_id, customer_id, order_date, status\n  FROM orders\n  WHERE status <> 'CANCELLED'\n),\nfirst_dates AS (\n  SELECT customer_id,\n         MIN(order_date) OVER (PARTITION BY customer_id) AS first_date\n  FROM orders_filtered\n  GROUP BY customer_id\n),\ncohorts AS (\n  SELECT customer_id,\n         CAST(STRFTIME('%Y', first_date) AS INTEGER) AS cohort_year\n  FROM first_dates\n)\nSELECT\n  ch.cohort_year,\n  COUNT(*) AS customers,\n  SUM(CASE WHEN EXISTS (\n        SELECT 1 FROM orders_filtered o2\n        WHERE o2.customer_id = ch.customer_id\n          AND o2.order_date > (SELECT first_date FROM first_dates fd WHERE fd.customer_id = ch.customer_id)\n      ) THEN 1 ELSE 0 END) AS repeat_customers,\n  ROUND(\n    100.0 * SUM(CASE WHEN EXISTS (\n        SELECT 1 FROM orders_filtered o2\n        WHERE o2.customer_id = ch.customer_id\n          AND o2.order_date > (SELECT first_date FROM first_dates fd WHERE fd.customer_id = ch.customer_id)\n      ) THEN 1 ELSE 0 END) / COUNT(*),\n    2\n  ) AS repeat_pct\nFROM cohorts AS ch\nGROUP BY ch.cohort_year\nORDER BY ch.cohort_year NULLS LAST",
+      "source": "llm",
+      "strategy": "Window-first-date + EXISTS anti\u2011join",
+      "rationale": "Computes each customer's first order date with a window function, eliminating the first_orders CTE and its materialisation. The repeat\u2011customer flag is derived with a correlated EXISTS, which SQLite can turn into a semi\u2011join, reducing scans and temporary tables.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L2",
+      "query_id": "Q20",
+      "sql": "WITH first_orders AS (\n  SELECT customer_id,\n         MIN(order_date) AS first_date\n  FROM orders\n  WHERE status <> 'CANCELLED'\n  GROUP BY customer_id\n),\nrepeaters AS (\n  SELECT o.customer_id\n  FROM orders o\n  JOIN first_orders f ON o.customer_id = f.customer_id\n  WHERE o.status <> 'CANCELLED'\n    AND o.order_date > f.first_date\n  GROUP BY o.customer_id\n),\ncohorts AS (\n  SELECT f.customer_id,\n         CAST(STRFTIME('%Y', f.first_date) AS INTEGER) AS cohort_year\n  FROM first_orders f\n)\nSELECT\n  c.cohort_year,\n  COUNT(*) AS customers,\n  COUNT(r.customer_id) AS repeat_customers,\n  ROUND(100.0 * COUNT(r.customer_id) / COUNT(*), 2) AS repeat_pct\nFROM cohorts c\nLEFT JOIN repeaters r ON r.customer_id = c.customer_id\nGROUP BY c.cohort_year\nORDER BY c.cohort_year NULLS LAST",
+      "source": "llm",
+      "strategy": "Single\u2011pass aggregation with LEFT JOIN on derived repeaters",
+      "rationale": "Creates the repeaters list in one grouped subquery that returns the earliest non\u2011first order per customer, then joins directly to cohorts. This removes the DISTINCT in repeaters and avoids a second scan of orders, letting SQLite use the primary\u2011key index on (order_id, customer_id).",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "L3",
+      "query_id": "Q20",
+      "sql": "WITH first_orders AS (\n  SELECT customer_id,\n         MIN(order_date) AS first_date\n  FROM orders\n  WHERE status <> 'CANCELLED'\n  GROUP BY customer_id\n),\ncohorts AS (\n  SELECT f.customer_id,\n         CAST(STRFTIME('%Y', f.first_date) AS INTEGER) AS cohort_year,\n         f.first_date\n  FROM first_orders f\n)\nSELECT\n  c.cohort_year,\n  COUNT(*) AS customers,\n  SUM(CASE WHEN EXISTS (\n        SELECT 1 FROM orders o\n        WHERE o.customer_id = c.customer_id\n          AND o.status <> 'CANCELLED'\n          AND o.order_date > c.first_date\n      ) THEN 1 ELSE 0 END) AS repeat_customers,\n  ROUND(\n    100.0 * SUM(CASE WHEN EXISTS (\n        SELECT 1 FROM orders o\n        WHERE o.customer_id = c.customer_id\n          AND o.status <> 'CANCELLED'\n          AND o.order_date > c.first_date\n      ) THEN 1 ELSE 0 END) / COUNT(*),\n    2\n  ) AS repeat_pct\nFROM cohorts c\nGROUP BY c.cohort_year\nORDER BY c.cohort_year NULLS LAST",
+      "source": "llm",
+      "strategy": "Correlated subquery for repeat flag, no CTE for repeaters",
+      "rationale": "Keeps only the first_orders CTE (which is cheap) and computes the repeat flag per row via a correlated EXISTS. SQLite can evaluate the EXISTS using the primary\u2011key index without materialising an intermediate set, cutting down on temp B\u2011trees and I/O.",
+      "parent_id": null,
+      "generator": "groq:openai/gpt-oss-120b"
+    },
+    {
+      "id": "R1",
+      "query_id": "Q20",
+      "sql": "WITH first_orders AS (\n  SELECT\n    orders.customer_id AS customer_id,\n    MIN(orders.order_date) AS first_date\n  FROM orders AS orders\n  WHERE\n    orders.status <> 'CANCELLED'\n  GROUP BY\n    orders.customer_id\n), repeaters AS (\n  SELECT DISTINCT\n    o.customer_id AS customer_id\n  FROM orders AS o\n  JOIN first_orders AS f\n    ON f.customer_id = o.customer_id\n  WHERE\n    o.status <> 'CANCELLED' AND o.order_date > f.first_date\n)\nSELECT\n  CAST(STRFTIME('%Y', f.first_date) AS INTEGER) AS cohort_year,\n  COUNT(*) AS customers,\n  SUM(CASE WHEN NOT r.customer_id IS NULL THEN 1 ELSE 0 END) AS repeat_customers,\n  ROUND(\n    CAST(100.0 * SUM(CASE WHEN NOT r.customer_id IS NULL THEN 1 ELSE 0 END) AS REAL) / COUNT(*),\n    2\n  ) AS repeat_pct\nFROM first_orders AS f\nLEFT JOIN repeaters AS r\n  ON r.customer_id = f.customer_id\nGROUP BY\n  CAST(STRFTIME('%Y', f.first_date) AS INTEGER)\nORDER BY\n  cohort_year NULLS LAST",
+      "source": "rule",
+      "strategy": "merge_derived_tables",
+      "rationale": "Merges derived tables and CTEs into the outer query (sqlglot merge_subqueries).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R2",
+      "query_id": "Q20",
+      "sql": "WITH first_orders AS (\n  SELECT\n    orders.customer_id AS customer_id,\n    MIN(orders.order_date) AS first_date\n  FROM orders AS orders\n  WHERE\n    orders.status <> 'CANCELLED'\n  GROUP BY\n    orders.customer_id\n), cohorts AS (\n  SELECT\n    f.customer_id AS customer_id,\n    CAST(STRFTIME('%Y', f.first_date) AS INTEGER) AS cohort_year\n  FROM first_orders AS f\n), repeaters AS (\n  SELECT DISTINCT\n    o.customer_id AS customer_id\n  FROM orders AS o\n  JOIN first_orders AS f\n    ON f.customer_id = o.customer_id AND f.first_date < o.order_date\n  WHERE\n    TRUE AND o.status <> 'CANCELLED'\n)\nSELECT\n  ch.cohort_year AS cohort_year,\n  COUNT(*) AS customers,\n  SUM(CASE WHEN NOT r.customer_id IS NULL THEN 1 ELSE 0 END) AS repeat_customers,\n  ROUND(\n    CAST(100.0 * SUM(CASE WHEN NOT r.customer_id IS NULL THEN 1 ELSE 0 END) AS REAL) / COUNT(*),\n    2\n  ) AS repeat_pct\nFROM cohorts AS ch\nLEFT JOIN repeaters AS r\n  ON ch.customer_id = r.customer_id\nGROUP BY\n  ch.cohort_year\nORDER BY\n  cohort_year NULLS LAST",
+      "source": "rule",
+      "strategy": "predicate_pushdown",
+      "rationale": "Pushes predicates down into derived tables and join conditions (sqlglot pushdown_predicates).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "R3",
+      "query_id": "Q20",
+      "sql": "WITH first_orders AS (\n  SELECT\n    orders.customer_id AS customer_id,\n    MIN(orders.order_date) AS first_date\n  FROM orders AS orders\n  WHERE\n    orders.status <> 'CANCELLED'\n  GROUP BY\n    orders.customer_id\n), repeaters AS (\n  SELECT DISTINCT\n    o.customer_id AS customer_id\n  FROM orders AS o\n  JOIN first_orders AS f\n    ON f.customer_id = o.customer_id AND f.first_date < o.order_date\n  WHERE\n    o.status <> 'CANCELLED'\n)\nSELECT\n  CAST(STRFTIME('%Y', f.first_date) AS INTEGER) AS cohort_year,\n  COUNT(*) AS customers,\n  SUM(CASE WHEN NOT r.customer_id IS NULL THEN 1 ELSE 0 END) AS repeat_customers,\n  ROUND(\n    CAST(100.0 * SUM(CASE WHEN NOT r.customer_id IS NULL THEN 1 ELSE 0 END) AS REAL) / COUNT(*),\n    2\n  ) AS repeat_pct\nFROM first_orders AS f\nLEFT JOIN repeaters AS r\n  ON f.customer_id = r.customer_id\nGROUP BY\n  CAST(STRFTIME('%Y', f.first_date) AS INTEGER)\nORDER BY\n  cohort_year NULLS LAST",
+      "source": "rule",
+      "strategy": "sqlglot_optimizer",
+      "rationale": "Full sqlglot logical optimizer pipeline (normalization, unnesting, merging, simplification).",
+      "parent_id": null,
+      "generator": "rule_based"
+    },
+    {
+      "id": "L1R1",
+      "query_id": "Q20",
+      "sql": "WITH orders_filtered AS (\n  SELECT order_id, customer_id, order_date, status\n  FROM orders\n  WHERE status <> 'CANCELLED'\n),\nfirst_dates AS (\n  SELECT customer_id,\n         MIN(order_date) AS first_date\n  FROM orders_filtered\n  GROUP BY customer_id\n),\ncohorts AS (\n  SELECT fd.customer_id,\n         CAST(STRFTIME('%Y', fd.first_date) AS INTEGER) AS cohort_year,\n         fd.first_date\n  FROM first_dates fd\n)\nSELECT\n  ch.cohort_year,\n  COUNT(*) AS customers,\n  SUM(CASE WHEN EXISTS (\n        SELECT 1 FROM orders_filtered o2\n        WHERE o2.customer_id = ch.customer_id\n          AND o2.order_date > ch.first_date\n      ) THEN 1 ELSE 0 END) AS repeat_customers,\n  ROUND(\n    100.0 * SUM(CASE WHEN EXISTS (\n        SELECT 1 FROM orders_filtered o2\n        WHERE o2.customer_id = ch.customer_id\n          AND o2.order_date > ch.first_date\n      ) THEN 1 ELSE 0 END) / COUNT(*),\n    2\n  ) AS repeat_pct\nFROM cohorts ch\nGROUP BY ch.cohort_year\nORDER BY ch.cohort_year NULLS LAST",
+      "source": "repair",
+      "strategy": "Window-first-date + EXISTS anti\u2011join (fixed)",
+      "rationale": "The original rewrite duplicated rows because it mixed a window function with GROUP BY, producing multiple rows per customer and thus inflating counts. The fix replaces the window expression with a straightforward MIN aggregation to obtain a single first_date per customer, then uses an EXISTS correlated subquery (or a join) to test for any later order. This preserves the exact semantics of the original query while keeping the anti\u2011join style for better optimizer plans.",
+      "parent_id": "L1",
+      "generator": "groq:openai/gpt-oss-120b"
+    }
+  ]
+}

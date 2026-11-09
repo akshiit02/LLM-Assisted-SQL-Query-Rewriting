@@ -1,0 +1,32 @@
+# Claude-generated rewrites verified and benchmarked on SQLite (no Oracle server needed).
+# Requires Anthropic credentials: ANTHROPIC_API_KEY (or `ant auth login`).
+
+experiment:
+  name: claude_sqlite
+  scales: [0.1, 0.5]
+  index_configs: [baseline, fk_indexes, tuned]
+  generation_mode: per_query
+
+database:
+  backend: sqlite
+
+llm:
+  provider: anthropic
+  model: claude-opus-5-5
+  effort: high                       # low | medium | high | xhigh | max
+  num_candidates: 3
+  max_tokens: 32000
+  include_plan_in_prompt: true       # plan-aware prompting (cf. E3-Rewrite)
+  include_row_counts: true
+  max_repair_rounds: 1               # send rejected candidates back with verifier feedback
+  also_run_rule_baseline: true       # compare against the rule-based rewriter
+  cache_dir: .cache/llm
+  use_cache: true
+
+benchmark:
+  warmup_runs: 1
+  measured_runs: 5
+  timeout_s: 120
+  improvement_threshold: 0.10
+
+output_dir: results

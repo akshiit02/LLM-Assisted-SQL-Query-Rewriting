@@ -1,0 +1,40 @@
+# The study as proposed: Claude rewrites, verified and benchmarked on Oracle Database.
+# Connection settings come from environment variables / .env (see .env.example).
+# Start a local Oracle Database Free instance with `docker compose up -d`.
+
+experiment:
+  name: oracle_claude
+  scales: [0.1, 1.0, 5.0]
+  index_configs: [baseline, fk_indexes, tuned]
+  generation_mode: per_query
+
+database:
+  backend: oracle
+  seed: 42
+  load_batch_size: 10000
+  oracle:
+    user: ${ORACLE_USER:-sqlrw}
+    password: ${ORACLE_PASSWORD:-sqlrw}
+    dsn: ${ORACLE_DSN:-localhost:1521/FREEPDB1}
+    collect_runtime_stats: true      # V$SQL + DBMS_XPLAN.DISPLAY_CURSOR (needs SELECT_CATALOG_ROLE)
+    flush_buffer_cache: false        # cold-cache runs (needs ALTER SYSTEM privilege)
+    thick_mode: false
+
+llm:
+  provider: anthropic
+  model: claude-opus-5-5
+  effort: high
+  num_candidates: 3
+  max_tokens: 32000
+  include_plan_in_prompt: true
+  include_row_counts: true
+  max_repair_rounds: 1
+  also_run_rule_baseline: true
+
+benchmark:
+  warmup_runs: 1
+  measured_runs: 5
+  timeout_s: 300
+  improvement_threshold: 0.10
+
+output_dir: results

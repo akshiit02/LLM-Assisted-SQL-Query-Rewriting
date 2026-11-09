@@ -1,0 +1,58 @@
+database:
+  backend: sqlite
+  sqlite:
+    path_template: data/benchmark_sf{scale}.db
+  oracle:
+    user: ''
+    dsn: localhost:1521/FREEPDB1
+    flush_buffer_cache: false
+    collect_runtime_stats: true
+    thick_mode: false
+    lib_dir: ''
+  seed: 42
+  load_batch_size: 5000
+llm:
+  provider: groq
+  model: openai/gpt-oss-120b
+  num_candidates: 3
+  effort: low
+  max_tokens: 4096
+  include_plan_in_prompt: true
+  include_row_counts: true
+  max_repair_rounds: 1
+  also_run_rule_baseline: true
+  cache_dir: .cache/llm
+  use_cache: true
+  ollama_url: http://localhost:11434
+  request_timeout_s: 600.0
+  temperature: null
+  rate_limit_retries: 8
+  rate_limit_max_wait_s: 120
+experiment:
+  name: groq_sqlite
+  scales:
+  - 0.1
+  - 0.5
+  index_configs:
+  - baseline
+  - fk_indexes
+  - tuned
+  queries: []
+  complexities: []
+  workload_file: workload/queries.yaml
+  generation_mode: per_query
+benchmark:
+  warmup_runs: 1
+  measured_runs: 5
+  timeout_s: 120
+  improvement_threshold: 0.1
+  candidate_timeout_factor: 50.0
+  candidate_timeout_floor_s: 5.0
+equivalence:
+  float_rel_tolerance: 1.0e-06
+  float_abs_tolerance: 1.0e-06
+  strict_column_names: true
+  max_rows: 2000000
+  diff_sample_size: 5
+output_dir: results
+source_path: config/experiment_groq.yaml

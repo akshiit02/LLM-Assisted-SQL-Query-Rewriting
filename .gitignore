@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+.pytest_cache/
+.env
+data/
+.cache/
+results/*
+# keep the main Groq run's report, figures and CSVs; skip its raw dumps
+!results/groq_sqlite_20261007_051554/
+results/groq_sqlite_20261007_051554/results.json
+results/groq_sqlite_20261007_051554/results.jsonl
+*.egg-info/
+build/
+dist/

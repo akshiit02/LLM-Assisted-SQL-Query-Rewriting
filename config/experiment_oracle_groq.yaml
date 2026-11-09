@@ -1,0 +1,47 @@
+# The study on Oracle Database with Groq-generated rewrites (free tier friendly).
+# Needs GROQ_API_KEY plus the Oracle connection settings in the environment / .env (see .env.example).
+# Start a local Oracle Database Free instance with `docker compose up -d`, or point ORACLE_DSN at an existing
+# Oracle 19c+ database. Check the setup first:  python -m sqlrewriter check -c config/experiment_oracle_groq.yaml --ping
+#
+# Oracle plans (DBMS_XPLAN) make prompts ~1K tokens longer than on SQLite; max_tokens stays at 4096 so a
+# request still fits the 8K tokens/minute free-tier limit. Candidates are generated once per query and
+# re-verified on every scale and index configuration, so LLM usage does not grow with the number of conditions.
+
+experiment:
+  name: oracle_groq
+  scales: [0.1, 1.0, 5.0]
+  index_configs: [baseline, fk_indexes, tuned]
+  generation_mode: per_query
+
+database:
+  backend: oracle
+  seed: 42
+  load_batch_size: 10000
+  oracle:
+    user: ${ORACLE_USER:-sqlrw}
+    password: ${ORACLE_PASSWORD:-sqlrw}
+    dsn: ${ORACLE_DSN:-localhost:1521/FREEPDB1}
+    collect_runtime_stats: true      # V$SQL + DBMS_XPLAN.DISPLAY_CURSOR (needs SELECT_CATALOG_ROLE)
+    flush_buffer_cache: false        # cold-cache runs (needs ALTER SYSTEM privilege)
+    thick_mode: false
+
+llm:
+  provider: groq
+  model: openai/gpt-oss-120b
+  effort: low                        # -> reasoning_effort; medium/high give better rewrites but use more tokens
+  num_candidates: 3
+  max_tokens: 4096
+  include_plan_in_prompt: true
+  include_row_counts: true
+  max_repair_rounds: 1
+  also_run_rule_baseline: true
+  rate_limit_retries: 8
+  rate_limit_max_wait_s: 120
+
+benchmark:
+  warmup_runs: 1
+  measured_runs: 5
+  timeout_s: 300
+  improvement_threshold: 0.10
+
+output_dir: results

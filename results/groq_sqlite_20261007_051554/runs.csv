@@ -1,0 +1,121 @@
+query_id,title,complexity,complexity_score,scale,index_config,orig_ms,orig_cost,orig_rows,n_candidates,n_valid,n_improved,n_regressed,best_valid_speedup,pipeline_speedup,best_candidate_id,error,llm_calls,llm_seconds
+Q01,Delivered orders of 2024 (function on date column),basic,4.0,0.1,baseline,1.4812999870628119,,610,4,4,4,0,3.0077155580264754,3.0077155580264754,R1,,1,1.6028422000817955
+Q02,Premium products in selected categories (OR chain),basic,5.5,0.1,baseline,0.03999995533376932,,10,7,5,0,3,0.9925557667531357,1.0,,,2,3.2160271998727694
+Q03,Large orders (arithmetic on column),basic,3.5,0.1,baseline,0.33489998895674944,,50,4,4,3,0,1.2801986714591564,1.2801986714591564,R1,,1,19.577463200083002
+Q04,Active corporate customers (redundant DISTINCT),basic,4.0,0.1,baseline,0.08889997843652964,,108,5,5,0,3,1.003386031208775,1.0,,,1,18.83559240004979
+Q05,Order volume per status and ship mode (HAVING used as WHERE),basic,5.5,0.1,baseline,1.632800092920661,,8,4,4,0,0,1.0143506101046942,1.0,,,1,17.373049100046046
+Q06,Customers with a large recent order (IN subquery),intermediate,10.0,0.1,baseline,0.27300009969621897,,41,7,7,0,4,1.0447764585328907,1.0,,,1,18.734296699985862
+Q07,Products that were never ordered (NOT IN anti-join),intermediate,9.0,0.1,baseline,1.3277999823912978,,20,6,5,0,4,1.0015085346798338,1.0,,,2,26.22029090009164
+Q08,Products appearing in returned orders (JOIN + DISTINCT),intermediate,9.5,0.1,baseline,0.59710000641644,,155,6,6,1,2,1.1657557087152857,1.1657557087152857,L2,,1,23.13764590001665
+Q09,Customer order summary (correlated scalar subqueries),intermediate,22.5,0.1,baseline,4.963699961081147,,14,7,7,5,0,8.158613012034175,8.158613012034175,L2,,1,18.28773849993013
+Q10,Express or bulk-discount big orders (UNION),intermediate,8.0,0.1,baseline,0.4814999410882592,,100,5,4,3,0,1.8949233564636858,1.8949233564636858,L1,,1,19.3038728000829
+Q11,Products priced above their category average (correlated aggregate),advanced,14.5,0.1,baseline,0.26210001669824123,,76,7,7,4,0,1.4766201901603777,1.4766201901603777,L3,,1,5.916912099928595
+Q12,Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS),advanced,22.5,0.1,baseline,1.5087000792846084,,75,7,7,5,0,1.8580049941025318,1.8580049941025318,R1,,1,23.092911200015806
+Q13,Top customer by revenue in every nation (duplicated derived table),advanced,33.0,0.1,baseline,7.211299962364137,,25,7,7,5,0,2.8928513903406947,2.8928513903406947,L2,,1,9.620941800065339
+Q14,Top-3 products per category by revenue (counting subquery),advanced,29.5,0.1,baseline,13.905600062571466,,100,7,6,4,0,2.543691787548333,2.543691787548333,L1,,2,43.95384869992267
+Q15,Suppliers with above-average review ratings (HAVING with subquery),advanced,20.5,0.1,baseline,0.9417999535799026,,11,8,7,2,3,1.5657524079007596,1.5657524079007596,L3R1,,2,37.91907950001769
+Q16,Customer lifetime value ranking per nation (multi-CTE + window),complex,27.5,0.1,baseline,5.43310004286468,,404,7,3,0,1,1.0917731652954616,1.0,,,2,49.13162169989664
+Q17,Monthly revenue with year-to-date totals (correlated running total),complex,18.5,0.1,baseline,94.18300003744662,,60,7,6,3,0,26.69888900853687,26.69888900853687,L1,,2,39.406658700085245
+Q18,Under-paid open orders (repeated correlated subqueries + CASE),complex,34.0,0.1,baseline,0.5388999124988914,,60,8,8,1,6,1.1321426361563967,1.1321426361563967,R4,,1,24.9075514000142
+Q19,Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations),complex,39.0,0.1,baseline,7.192000048235059,,40,7,2,2,0,1.1661316162491584,1.1661316162491584,L1,,2,54.71617200016044
+Q20,Yearly customer cohorts and repeat-purchase rate (CTEs + outer join),complex,25.5,0.1,baseline,3.3636000007390976,,5,7,6,1,1,1.756632520888397,1.756632520888397,L3,,3,43.44318189995829
+Q01,Delivered orders of 2024 (function on date column),basic,4.0,0.1,fk_indexes,1.4256000285968184,,610,4,4,4,0,2.848351879927299,2.848351879927299,L1,,0,0.0
+Q02,Premium products in selected categories (OR chain),basic,5.5,0.1,fk_indexes,0.0415000831708312,,10,7,5,0,2,0.9696286403607789,1.0,,,0,0.0
+Q03,Large orders (arithmetic on column),basic,3.5,0.1,fk_indexes,0.33119996078312397,,50,4,4,3,0,1.242776897078783,1.242776897078783,R1,,0,0.0
+Q04,Active corporate customers (redundant DISTINCT),basic,4.0,0.1,fk_indexes,0.08829997386783361,,108,5,5,0,2,0.9954903816244863,1.0,,,0,0.0
+Q05,Order volume per status and ship mode (HAVING used as WHERE),basic,5.5,0.1,fk_indexes,1.6328999772667885,,8,4,4,0,0,1.0200524814361265,1.0,,,0,0.0
+Q06,Customers with a large recent order (IN subquery),intermediate,10.0,0.1,fk_indexes,0.26270002126693726,,41,7,7,0,6,0.9729627647854963,1.0,,,0,0.0
+Q07,Products that were never ordered (NOT IN anti-join),intermediate,9.0,0.1,fk_indexes,0.04880002234131098,,20,6,5,0,4,0.9979573714370059,1.0,,,0,0.0
+Q08,Products appearing in returned orders (JOIN + DISTINCT),intermediate,9.5,0.1,fk_indexes,2.4671999271959066,,155,6,6,2,0,2.496155432128298,2.496155432128298,R1,,0,0.0
+Q09,Customer order summary (correlated scalar subqueries),intermediate,22.5,0.1,fk_indexes,0.08080003317445517,,14,7,7,0,5,0.9889840096438006,1.0,,,0,0.0
+Q10,Express or bulk-discount big orders (UNION),intermediate,8.0,0.1,fk_indexes,0.4860000917688012,,100,5,4,3,0,1.8606434665022946,1.8606434665022946,L1,,0,0.0
+Q11,Products priced above their category average (correlated aggregate),advanced,14.5,0.1,fk_indexes,0.32869994174689054,,76,7,7,5,0,1.5302603952701128,1.5302603952701128,L1,,0,0.0
+Q12,Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS),advanced,22.5,0.1,fk_indexes,0.8039000676944852,,75,7,7,1,4,1.5661405865081621,1.5661405865081621,L3,,0,0.0
+Q13,Top customer by revenue in every nation (duplicated derived table),advanced,33.0,0.1,fk_indexes,5.109500023536384,,25,7,7,5,0,2.1423480184550256,2.1423480184550256,L2,,0,0.0
+Q14,Top-3 products per category by revenue (counting subquery),advanced,29.5,0.1,fk_indexes,11.41890010330826,,100,7,6,4,0,3.769484713192239,3.769484713192239,L1,,0,0.0
+Q15,Suppliers with above-average review ratings (HAVING with subquery),advanced,20.5,0.1,fk_indexes,0.5793001037091017,,11,8,7,0,3,1.0249471115632423,1.0,,,0,0.0
+Q16,Customer lifetime value ranking per nation (multi-CTE + window),complex,27.5,0.1,fk_indexes,5.647000041790307,,404,7,3,1,0,1.1439973919874225,1.1439973919874225,R2,,0,0.0
+Q17,Monthly revenue with year-to-date totals (correlated running total),complex,18.5,0.1,fk_indexes,91.44029999151826,,60,7,6,3,2,25.95302660172503,25.95302660172503,L1,,0,0.0
+Q18,Under-paid open orders (repeated correlated subqueries + CASE),complex,34.0,0.1,fk_indexes,0.5610999651253223,,60,8,8,1,6,1.1951011833946859,1.1951011833946859,R4,,0,0.0
+Q19,Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations),complex,39.0,0.1,fk_indexes,7.143599912524223,,40,7,2,2,0,1.1674456416169838,1.1674456416169838,L2R1,,0,0.0
+Q20,Yearly customer cohorts and repeat-purchase rate (CTEs + outer join),complex,25.5,0.1,fk_indexes,3.4528999822214246,,5,7,6,1,1,1.812450713227905,1.812450713227905,L3,,0,0.0
+Q01,Delivered orders of 2024 (function on date column),basic,4.0,0.1,tuned,1.4734999276697636,,610,4,4,4,0,3.2527595316659985,3.2527595316659985,L3,,0,0.0
+Q02,Premium products in selected categories (OR chain),basic,5.5,0.1,tuned,0.04139996599406004,,10,7,5,2,2,1.1761342214402413,1.1761342214402413,R1,,0,0.0
+Q03,Large orders (arithmetic on column),basic,3.5,0.1,tuned,0.301400083117187,,50,4,4,3,0,1.2820084050798888,1.2820084050798888,L1,,0,0.0
+Q04,Active corporate customers (redundant DISTINCT),basic,4.0,0.1,tuned,0.08969998452812433,,108,5,5,0,2,0.9966666407965914,1.0,,,0,0.0
+Q05,Order volume per status and ship mode (HAVING used as WHERE),basic,5.5,0.1,tuned,2.011900069192052,,8,4,4,0,0,1.0254332465538811,1.0,,,0,0.0
+Q06,Customers with a large recent order (IN subquery),intermediate,10.0,0.1,tuned,0.16289995983242989,,41,7,7,0,5,0.9661919140377128,1.0,,,0,0.0
+Q07,Products that were never ordered (NOT IN anti-join),intermediate,9.0,0.1,tuned,0.04880002234131098,,20,6,5,0,4,0.9759998323620421,1.0,,,0,0.0
+Q08,Products appearing in returned orders (JOIN + DISTINCT),intermediate,9.5,0.1,tuned,0.4067000700160861,,155,6,6,1,2,1.2595236884885075,1.2595236884885075,L2,,0,0.0
+Q09,Customer order summary (correlated scalar subqueries),intermediate,22.5,0.1,tuned,0.06370001938194036,,14,7,7,0,5,1.0290793786920487,1.0,,,0,0.0
+Q10,Express or bulk-discount big orders (UNION),intermediate,8.0,0.1,tuned,0.48429996240884066,,100,5,4,3,0,1.868441251806077,1.868441251806077,L1,,0,0.0
+Q11,Products priced above their category average (correlated aggregate),advanced,14.5,0.1,tuned,0.2356999320909381,,76,7,7,4,1,1.7883141339429087,1.7883141339429087,R2,,0,0.0
+Q12,Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS),advanced,22.5,0.1,tuned,0.2680999459698796,,75,7,7,0,6,0.9742003849489203,1.0,,,0,0.0
+Q13,Top customer by revenue in every nation (duplicated derived table),advanced,33.0,0.1,tuned,5.081500043161213,,25,7,7,5,0,2.080620769231539,2.080620769231539,L2,,0,0.0
+Q14,Top-3 products per category by revenue (counting subquery),advanced,29.5,0.1,tuned,2.8337000403553247,,100,7,6,4,0,1.8466602646455337,1.8466602646455337,R1,,0,0.0
+Q15,Suppliers with above-average review ratings (HAVING with subquery),advanced,20.5,0.1,tuned,0.3578999312594533,,11,8,7,0,3,1.070594745258419,1.0,,,0,0.0
+Q16,Customer lifetime value ranking per nation (multi-CTE + window),complex,27.5,0.1,tuned,6.4085000194609165,,404,7,3,1,0,1.2586664078998981,1.2586664078998981,R2,,0,0.0
+Q17,Monthly revenue with year-to-date totals (correlated running total),complex,18.5,0.1,tuned,91.81760007049888,,60,7,6,3,2,25.805957814072368,25.805957814072368,L1,,0,0.0
+Q18,Under-paid open orders (repeated correlated subqueries + CASE),complex,34.0,0.1,tuned,0.56900002527982,,60,8,8,1,6,1.1377725727252455,1.1377725727252455,R4,,0,0.0
+Q19,Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations),complex,39.0,0.1,tuned,4.751099972054362,,40,7,2,0,2,0.7491839711244035,1.0,,,0,0.0
+Q20,Yearly customer cohorts and repeat-purchase rate (CTEs + outer join),complex,25.5,0.1,tuned,3.4712000051513314,,5,7,6,1,1,1.701151635901948,1.701151635901948,L3,,0,0.0
+Q01,Delivered orders of 2024 (function on date column),basic,4.0,0.5,baseline,7.495300029404461,,2898,4,4,4,0,3.0800492986712436,3.0800492986712436,L1,,0,0.0
+Q02,Premium products in selected categories (OR chain),basic,5.5,0.5,baseline,0.10149995796382427,,36,7,5,0,3,1.021126933766202,1.0,,,0,0.0
+Q03,Large orders (arithmetic on column),basic,3.5,0.5,baseline,1.4836000045761466,,50,4,4,4,0,1.3107164936721345,1.3107164936721345,L3,,0,0.0
+Q04,Active corporate customers (redundant DISTINCT),basic,4.0,0.5,baseline,0.38219999987632036,,624,5,5,0,2,0.9779939862005526,1.0,,,0,0.0
+Q05,Order volume per status and ship mode (HAVING used as WHERE),basic,5.5,0.5,baseline,9.082000004127622,,8,4,4,0,0,1.0024614431832466,1.0,,,0,0.0
+Q06,Customers with a large recent order (IN subquery),intermediate,10.0,0.5,baseline,1.2357000960037112,,255,7,7,0,5,1.0046341814299586,1.0,,,0,0.0
+Q07,Products that were never ordered (NOT IN anti-join),intermediate,9.0,0.5,baseline,8.673100033774972,,100,6,5,0,4,0.9251405362125796,1.0,,,0,0.0
+Q08,Products appearing in returned orders (JOIN + DISTINCT),intermediate,9.5,0.5,baseline,3.1798999989405274,,742,6,6,2,2,1.2062438658613892,1.2062438658613892,L2,,0,0.0
+Q09,Customer order summary (correlated scalar subqueries),intermediate,22.5,0.5,baseline,191.53770001139492,,104,7,7,5,0,58.34583340558758,58.34583340558758,L2,,0,0.0
+Q10,Express or bulk-discount big orders (UNION),intermediate,8.0,0.5,baseline,2.4765999987721443,,638,5,4,3,0,1.8577750780221045,1.8577750780221045,L1,,0,0.0
+Q11,Products priced above their category average (correlated aggregate),advanced,14.5,0.5,baseline,2.229499979875982,,329,7,7,5,0,3.4358141509997564,3.4358141509997564,R4,,0,0.0
+Q12,Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS),advanced,22.5,0.5,baseline,2043.9458000473678,,377,7,7,6,0,442.19237917480643,442.19237917480643,R1,,0,0.0
+Q13,Top customer by revenue in every nation (duplicated derived table),advanced,33.0,0.5,baseline,48.55329997371882,,25,7,7,5,0,3.539824873292044,3.539824873292044,L2,,0,0.0
+Q14,Top-3 products per category by revenue (counting subquery),advanced,29.5,0.5,baseline,83.090600091964,,119,7,6,4,0,2.4916590459824515,2.4916590459824515,L1,,0,0.0
+Q15,Suppliers with above-average review ratings (HAVING with subquery),advanced,20.5,0.5,baseline,4.964500083588064,,20,8,7,0,3,1.0838100102742128,1.0,,,0,0.0
+Q16,Customer lifetime value ranking per nation (multi-CTE + window),complex,27.5,0.5,baseline,30.41399992071092,,1982,7,3,1,0,1.1636822716752058,1.1636822716752058,R2,,0,0.0
+Q17,Monthly revenue with year-to-date totals (correlated running total),complex,18.5,0.5,baseline,482.71450004540384,,60,7,6,3,2,25.806847333755606,25.806847333755606,L3R1,,0,0.0
+Q18,Under-paid open orders (repeated correlated subqueries + CASE),complex,34.0,0.5,baseline,1578.2867000671104,,302,8,8,6,0,92.54153968442765,92.54153968442765,L2,,0,0.0
+Q19,Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations),complex,39.0,0.5,baseline,24.176100036129355,,40,7,2,0,2,0.6606737335480496,1.0,,,0,0.0
+Q20,Yearly customer cohorts and repeat-purchase rate (CTEs + outer join),complex,25.5,0.5,baseline,19.218400004319847,,5,7,6,0,2,1.0141207728056296,1.0,,,0,0.0
+Q01,Delivered orders of 2024 (function on date column),basic,4.0,0.5,fk_indexes,7.3509999783709645,,2898,4,4,4,0,2.893524865748917,2.893524865748917,L1,,0,0.0
+Q02,Premium products in selected categories (OR chain),basic,5.5,0.5,fk_indexes,0.10449998080730438,,36,7,5,1,1,1.358907361262917,1.358907361262917,L2R1,,0,0.0
+Q03,Large orders (arithmetic on column),basic,3.5,0.5,fk_indexes,1.5162000199779868,,50,4,4,4,0,1.3366834083178813,1.3366834083178813,R1,,0,0.0
+Q04,Active corporate customers (redundant DISTINCT),basic,4.0,0.5,fk_indexes,0.39389997255057096,,624,5,5,0,2,0.994445804566267,1.0,,,0,0.0
+Q05,Order volume per status and ship mode (HAVING used as WHERE),basic,5.5,0.5,fk_indexes,9.031099965795875,,8,4,4,0,0,1.001930383697469,1.0,,,0,0.0
+Q06,Customers with a large recent order (IN subquery),intermediate,10.0,0.5,fk_indexes,1.269300002604723,,255,7,7,0,7,0.8947554100587403,1.0,,,0,0.0
+Q07,Products that were never ordered (NOT IN anti-join),intermediate,9.0,0.5,fk_indexes,0.2332000294700265,,100,6,5,1,4,1.2338630745852934,1.2338630745852934,R2,,0,0.0
+Q08,Products appearing in returned orders (JOIN + DISTINCT),intermediate,9.5,0.5,fk_indexes,18.677799962460995,,742,6,6,5,0,2.7040667160431364,2.7040667160431364,L1,,0,0.0
+Q09,Customer order summary (correlated scalar subqueries),intermediate,22.5,0.5,fk_indexes,0.4531999584287405,,104,7,7,0,6,0.9756728280331146,1.0,,,0,0.0
+Q10,Express or bulk-discount big orders (UNION),intermediate,8.0,0.5,fk_indexes,2.503400086425245,,638,5,4,3,0,1.8327842548601414,1.8327842548601414,L1,,0,0.0
+Q11,Products priced above their category average (correlated aggregate),advanced,14.5,0.5,fk_indexes,4.202699987217784,,329,7,7,5,0,5.317181394049975,5.317181394049975,R4,,0,0.0
+Q12,Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS),advanced,22.5,0.5,fk_indexes,4.786500008776784,,377,7,7,1,4,1.643715697307204,1.643715697307204,L3,,0,0.0
+Q13,Top customer by revenue in every nation (duplicated derived table),advanced,33.0,0.5,fk_indexes,37.52650006208569,,25,7,7,5,0,2.8193155674716674,2.8193155674716674,L2,,0,0.0
+Q14,Top-3 products per category by revenue (counting subquery),advanced,29.5,0.5,fk_indexes,67.55070004146546,,119,7,6,4,0,3.770664461948794,3.770664461948794,L1,,0,0.0
+Q15,Suppliers with above-average review ratings (HAVING with subquery),advanced,20.5,0.5,fk_indexes,2.8571999864652753,,20,8,7,0,2,1.0098253971787203,1.0,,,0,0.0
+Q16,Customer lifetime value ranking per nation (multi-CTE + window),complex,27.5,0.5,fk_indexes,30.557300080545247,,1982,7,3,1,0,1.1541552927780117,1.1541552927780117,R2,,0,0.0
+Q17,Monthly revenue with year-to-date totals (correlated running total),complex,18.5,0.5,fk_indexes,479.5925000216812,,60,7,6,3,2,25.57840302348656,25.57840302348656,L3R1,,0,0.0
+Q18,Under-paid open orders (repeated correlated subqueries + CASE),complex,34.0,0.5,fk_indexes,2.5388000067323446,,302,8,8,1,6,1.1665135519495904,1.1665135519495904,R4,,0,0.0
+Q19,Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations),complex,39.0,0.5,fk_indexes,47.70790005568415,,40,7,2,2,0,1.290759748033968,1.290759748033968,L2R1,,0,0.0
+Q20,Yearly customer cohorts and repeat-purchase rate (CTEs + outer join),complex,25.5,0.5,fk_indexes,19.581299973651767,,5,7,6,1,1,1.8896126472430377,1.8896126472430377,L3,,0,0.0
+Q01,Delivered orders of 2024 (function on date column),basic,4.0,0.5,tuned,7.362500065937638,,2898,4,4,4,0,3.1819949605016578,3.1819949605016578,L3,,0,0.0
+Q02,Premium products in selected categories (OR chain),basic,5.5,0.5,tuned,0.06089999806135893,,36,7,5,2,2,1.131968953063905,1.131968953063905,R1,,0,0.0
+Q03,Large orders (arithmetic on column),basic,3.5,0.5,tuned,1.3952000299468637,,50,4,4,4,0,1.3634320734282281,1.3634320734282281,L1,,0,0.0
+Q04,Active corporate customers (redundant DISTINCT),basic,4.0,0.5,tuned,0.3961999900639057,,624,5,5,0,2,0.9802076697007994,1.0,,,0,0.0
+Q05,Order volume per status and ship mode (HAVING used as WHERE),basic,5.5,0.5,tuned,11.922199977561831,,8,4,4,0,0,1.0185039555162514,1.0,,,0,0.0
+Q06,Customers with a large recent order (IN subquery),intermediate,10.0,0.5,tuned,0.8588999044150114,,255,7,7,0,3,1.0487177471661258,1.0,,,0,0.0
+Q07,Products that were never ordered (NOT IN anti-join),intermediate,9.0,0.5,tuned,0.20180002320557833,,100,6,5,0,4,0.9772400935607369,1.0,,,0,0.0
+Q08,Products appearing in returned orders (JOIN + DISTINCT),intermediate,9.5,0.5,tuned,2.3262999020516872,,742,6,6,2,2,1.2727322290840615,1.2727322290840615,L2,,0,0.0
+Q09,Customer order summary (correlated scalar subqueries),intermediate,22.5,0.5,tuned,0.24389999452978373,,104,7,7,0,5,1.009937964847872,1.0,,,0,0.0
+Q10,Express or bulk-discount big orders (UNION),intermediate,8.0,0.5,tuned,2.5153999449685216,,638,5,4,3,0,1.895125431744467,1.895125431744467,L1,,0,0.0
+Q11,Products priced above their category average (correlated aggregate),advanced,14.5,0.5,tuned,1.97049998678267,,329,7,7,5,0,4.792072093700748,4.792072093700748,R4,,0,0.0
+Q12,Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS),advanced,22.5,0.5,tuned,1.340300077572465,,377,7,7,0,6,0.9999254816853437,1.0,,,0,0.0
+Q13,Top customer by revenue in every nation (duplicated derived table),advanced,33.0,0.5,tuned,36.751899984665215,,25,7,7,5,0,2.800102105103757,2.800102105103757,L2,,0,0.0
+Q14,Top-3 products per category by revenue (counting subquery),advanced,29.5,0.5,tuned,15.129699953831732,,119,7,6,4,0,1.9928214921199425,1.9928214921199425,L1,,0,0.0
+Q15,Suppliers with above-average review ratings (HAVING with subquery),advanced,20.5,0.5,tuned,1.5724999830126762,,20,8,7,0,3,1.059778930144923,1.0,,,0,0.0
+Q16,Customer lifetime value ranking per nation (multi-CTE + window),complex,27.5,0.5,tuned,35.47060000710189,,1982,7,3,2,0,1.3197724338907744,1.3197724338907744,R2,,0,0.0
+Q17,Monthly revenue with year-to-date totals (correlated running total),complex,18.5,0.5,tuned,481.46010003983974,,60,7,6,3,2,26.63591262503098,26.63591262503098,L3R1,,0,0.0
+Q18,Under-paid open orders (repeated correlated subqueries + CASE),complex,34.0,0.5,tuned,2.627899986691773,,302,8,8,1,6,1.1406806269044514,1.1406806269044514,R4,,0,0.0
+Q19,Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations),complex,39.0,0.5,tuned,25.6483000703156,,40,7,2,0,2,0.6830803258527736,1.0,,,0,0.0
+Q20,Yearly customer cohorts and repeat-purchase rate (CTEs + outer join),complex,25.5,0.5,tuned,19.122599973343313,,5,7,6,1,1,1.7425369069138459,1.7425369069138459,L3,,0,0.0

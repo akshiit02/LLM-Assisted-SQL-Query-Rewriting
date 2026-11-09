@@ -1,0 +1,23 @@
+# Oracle backend with only the rule-based rewriter (no API key needed) –
+# useful to validate an Oracle installation before spending LLM tokens.
+
+experiment:
+  name: oracle_rules
+  scales: [0.1, 1.0]
+  index_configs: [baseline, fk_indexes, tuned]
+
+database:
+  backend: oracle
+  oracle:
+    user: ${ORACLE_USER:-sqlrw}
+    password: ${ORACLE_PASSWORD:-sqlrw}
+    dsn: ${ORACLE_DSN:-localhost:1521/FREEPDB1}
+
+llm:
+  provider: rule_based
+
+benchmark:
+  measured_runs: 5
+  timeout_s: 300
+
+output_dir: results

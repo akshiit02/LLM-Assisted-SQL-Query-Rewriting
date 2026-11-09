@@ -1,0 +1,33 @@
+[build-system]
+requires = ["setuptools>=64"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "sqlrewriter"
+version = "1.0.0"
+description = "LLM-assisted, semantics-preserving SQL query rewriting for query performance optimization (Oracle study)"
+readme = "README.md"
+requires-python = ">=3.10"
+authors = [
+  { name = "Akshit Sharma" }, { name = "Dhavval" }, { name = "Akshaya KV" }, { name = "Janav Gandhi" },
+]
+dependencies = [
+  "sqlglot>=26.0", "pyyaml>=6.0", "pandas>=2.0", "numpy>=1.24", "matplotlib>=3.7", "jinja2>=3.1", "rich>=13.0",
+]
+
+[project.optional-dependencies]
+oracle = ["oracledb>=2.0"]
+claude = ["anthropic>=0.96"]
+groq = ["groq>=1.0"]
+ui = ["streamlit>=1.46"]
+dev = ["pytest>=7.0"]
+all = ["oracledb>=2.0", "anthropic>=0.96", "groq>=1.0", "streamlit>=1.46", "pytest>=7.0"]
+
+[project.scripts]
+sqlrewriter = "sqlrewriter.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["sqlrewriter*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]

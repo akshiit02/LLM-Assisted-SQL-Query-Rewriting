@@ -1,0 +1,247 @@
+{
+  "meta": {
+    "name": "groq_sqlite",
+    "started_at": "2026-10-07T05:15:54",
+    "tool_version": "1.0.0",
+    "python": "3.10.9",
+    "platform": "Windows-10-10.0.26300-SP0",
+    "backend": "sqlite",
+    "rewriters": [
+      "groq",
+      "rule_based"
+    ],
+    "llm_model": "openai/gpt-oss-120b",
+    "settings": {
+      "database": {
+        "backend": "sqlite",
+        "sqlite": {
+          "path_template": "data/benchmark_sf{scale}.db"
+        },
+        "oracle": {
+          "user": "",
+          "dsn": "localhost:1521/FREEPDB1",
+          "flush_buffer_cache": false,
+          "collect_runtime_stats": true,
+          "thick_mode": false,
+          "lib_dir": ""
+        },
+        "seed": 42,
+        "load_batch_size": 5000
+      },
+      "llm": {
+        "provider": "groq",
+        "model": "openai/gpt-oss-120b",
+        "num_candidates": 3,
+        "effort": "low",
+        "max_tokens": 4096,
+        "include_plan_in_prompt": true,
+        "include_row_counts": true,
+        "max_repair_rounds": 1,
+        "also_run_rule_baseline": true,
+        "cache_dir": ".cache/llm",
+        "use_cache": true,
+        "ollama_url": "http://localhost:11434",
+        "request_timeout_s": 600.0,
+        "temperature": null,
+        "rate_limit_retries": 8,
+        "rate_limit_max_wait_s": 120
+      },
+      "experiment": {
+        "name": "groq_sqlite",
+        "scales": [
+          0.1,
+          0.5
+        ],
+        "index_configs": [
+          "baseline",
+          "fk_indexes",
+          "tuned"
+        ],
+        "queries": [],
+        "complexities": [],
+        "workload_file": "workload/queries.yaml",
+        "generation_mode": "per_query"
+      },
+      "benchmark": {
+        "warmup_runs": 1,
+        "measured_runs": 5,
+        "timeout_s": 120,
+        "improvement_threshold": 0.1,
+        "candidate_timeout_factor": 50.0,
+        "candidate_timeout_floor_s": 5.0
+      },
+      "equivalence": {
+        "float_rel_tolerance": 1e-06,
+        "float_abs_tolerance": 1e-06,
+        "strict_column_names": true,
+        "max_rows": 2000000,
+        "diff_sample_size": 5
+      },
+      "output_dir": "results",
+      "source_path": "config/experiment_groq.yaml"
+    },
+    "queries": [
+      "Q01",
+      "Q02",
+      "Q03",
+      "Q04",
+      "Q05",
+      "Q06",
+      "Q07",
+      "Q08",
+      "Q09",
+      "Q10",
+      "Q11",
+      "Q12",
+      "Q13",
+      "Q14",
+      "Q15",
+      "Q16",
+      "Q17",
+      "Q18",
+      "Q19",
+      "Q20"
+    ],
+    "finished_at": "2026-10-07T05:28:25",
+    "duration_s": 751.5,
+    "llm_usage": {
+      "groq": {
+        "calls": 29,
+        "seconds": 498.3976979003055,
+        "input_tokens": 55201,
+        "output_tokens": 24216,
+        "cache_hits": 0,
+        "notes": [
+          "rate limited, waited 3s"
+        ]
+      },
+      "rule_based": {
+        "calls": 0,
+        "seconds": 0.0,
+        "input_tokens": 0,
+        "output_tokens": 0,
+        "cache_hits": 0,
+        "notes": []
+      }
+    }
+  },
+  "n_runs": 120,
+  "n_candidates": 762,
+  "overall": {
+    "generated": 762,
+    "executable": 720,
+    "equivalent": 660,
+    "valid": 660,
+    "improved": 235,
+    "regressed": 201,
+    "executable_rate": 0.9448818897637795,
+    "equivalence_rate_of_executable": 0.9166666666666666,
+    "equivalence_rate_overall": 0.8661417322834646,
+    "improved_rate_of_valid": 0.3560606060606061,
+    "regressed_rate_of_valid": 0.30454545454545456,
+    "median_speedup_valid": 1.0009662957864534,
+    "geomean_speedup_valid": 0.9744426140758629,
+    "max_speedup": 442.19237917480643
+  },
+  "by_source": [
+    {
+      "source": "llm",
+      "generated": 360,
+      "executable": 336,
+      "equivalent": 294,
+      "valid": 294,
+      "improved": 140,
+      "regressed": 90,
+      "executable_rate": 0.9333333333333333,
+      "equivalence_rate_of_executable": 0.875,
+      "equivalence_rate_overall": 0.8166666666666667,
+      "improved_rate_of_valid": 0.47619047619047616,
+      "regressed_rate_of_valid": 0.30612244897959184,
+      "median_speedup_valid": 1.0729776932034039,
+      "geomean_speedup_valid": 1.0912961631082334,
+      "max_speedup": 320.5435265869664
+    },
+    {
+      "source": "rule",
+      "generated": 336,
+      "executable": 324,
+      "equivalent": 318,
+      "valid": 318,
+      "improved": 78,
+      "regressed": 87,
+      "executable_rate": 0.9642857142857143,
+      "equivalence_rate_of_executable": 0.9814814814814815,
+      "equivalence_rate_overall": 0.9464285714285714,
+      "improved_rate_of_valid": 0.24528301886792453,
+      "regressed_rate_of_valid": 0.27358490566037735,
+      "median_speedup_valid": 0.995671362364557,
+      "geomean_speedup_valid": 0.8978348232465795,
+      "max_speedup": 442.19237917480643
+    },
+    {
+      "source": "repair",
+      "generated": 66,
+      "executable": 60,
+      "equivalent": 48,
+      "valid": 48,
+      "improved": 17,
+      "regressed": 24,
+      "executable_rate": 0.9090909090909091,
+      "equivalence_rate_of_executable": 0.8,
+      "equivalence_rate_overall": 0.7272727272727273,
+      "improved_rate_of_valid": 0.3541666666666667,
+      "regressed_rate_of_valid": 0.5,
+      "median_speedup_valid": 0.8840039996617719,
+      "geomean_speedup_valid": 0.8376712984939971,
+      "max_speedup": 26.63591262503098
+    }
+  ],
+  "pipeline": {
+    "runs": 120,
+    "runs_with_valid_rewrite": 120,
+    "runs_with_improvement": 78,
+    "geomean_pipeline_speedup": 1.8925916374173064,
+    "median_pipeline_speedup": 1.2661279587862846,
+    "max_pipeline_speedup": 442.19237917480643
+  },
+  "complexity_correlation": {
+    "score_vs_pipeline_speedup_spearman": 0.149,
+    "score_vs_equivalence_rate_spearman": -0.246,
+    "score_vs_executable_rate_spearman": -0.232
+  },
+  "verdict_counts": {
+    "improved": 235,
+    "neutral": 224,
+    "regressed": 201,
+    "rejected_nonequivalent": 60,
+    "rejected_syntax": 30,
+    "rejected_unexecutable": 12
+  },
+  "error_categories": {
+    "syntax_error": 30,
+    "group_by_error": 6,
+    "other": 6
+  },
+  "equivalence_failures": {
+    "row_count": 36,
+    "values": 24
+  },
+  "vacuous_equivalences": 0,
+  "repair": {
+    "attempts": 66,
+    "now_valid": 48,
+    "now_improved": 17
+  },
+  "plan_change": {
+    "valid_with_plan_change": 439,
+    "improved_with_plan_change": 179,
+    "improved_without_plan_change": 56
+  },
+  "rq_answers": {
+    "RQ1": "720 of 762 generated candidates (94.5%) passed the safety, syntax and executability gates.",
+    "RQ2": "660 candidates were semantically equivalent: 91.7% of executable candidates and 86.6% of all candidates. Vacuous (empty-result) equivalences: 0.",
+    "RQ3": "Of 660 valid rewrites, 35.6% improved performance by at least the threshold and 30.5% were harmful (slower). Geometric-mean speedup of valid rewrites: 0.97x (max 442.19x). Selecting the best verified rewrite per query and condition improved 78 of 120 query runs, for a geometric-mean pipeline speedup of 1.89x.",
+    "RQ4": "By complexity level - basic: exec 91.7%, equiv 91.7%, improved 37.9% of valid; intermediate: exec 100.0%, equiv 93.5%, improved 24.1% of valid; advanced: exec 97.2%, equiv 94.4%, improved 47.5% of valid; complex: exec 88.9%, equiv 69.4%, improved 30.7% of valid. Spearman correlation of the structural complexity score with equivalence rate: -0.246, with pipeline speedup: 0.149.",
+    "RQ5": "By database scale and index configuration - sf=0.1/baseline: 14/20 runs improved, geomean 1.81x; sf=0.1/fk_indexes: 13/20 runs improved, geomean 1.66x; sf=0.1/tuned: 12/20 runs improved, geomean 1.53x; sf=0.5/baseline: 12/20 runs improved, geomean 3.27x; sf=0.5/fk_indexes: 15/20 runs improved, geomean 1.86x; sf=0.5/tuned: 12/20 runs improved, geomean 1.65x."
+  }
+}

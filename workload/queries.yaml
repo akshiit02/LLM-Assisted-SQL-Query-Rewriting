@@ -1,0 +1,363 @@
+# ---------------------------------------------------------------------------
+# SQL workload (Stage 1 of the pipeline)
+#
+# Queries are authored in Oracle SQL.  The SQLite backend transpiles them
+# automatically with sqlglot.  Each query contains at least one formulation
+# choice that a semantics-preserving rewrite could change (non-sargable
+# predicates, correlated subqueries, redundant DISTINCT, UNION vs OR, ...),
+# and several contain *traps* where an obvious rewrite is NOT equivalent
+# (NULL semantics, COUNT vs COUNT over outer join, ROUND placement).
+#
+# Complexity levels: basic | intermediate | advanced | complex
+# ---------------------------------------------------------------------------
+queries:
+
+  # ============================== BASIC ===================================
+  - id: Q01
+    complexity: basic
+    title: Delivered orders of 2024 (function on date column)
+    description: EXTRACT() on an indexed column prevents index range scans; a date-range predicate is sargable.
+    tags: [sargability, date-function, filter]
+    sql: |
+      SELECT order_id, customer_id, total_amount
+      FROM orders
+      WHERE EXTRACT(YEAR FROM order_date) = 2024
+        AND status = 'DELIVERED'
+      ORDER BY order_id
+
+  - id: Q02
+    complexity: basic
+    title: Premium products in selected categories (OR chain)
+    description: A chain of OR predicates on one column can be expressed as IN.
+    tags: [or-to-in, filter]
+    sql: |
+      SELECT product_id, name, unit_price
+      FROM products
+      WHERE (category_id = 9 OR category_id = 13 OR category_id = 17 OR category_id = 21)
+        AND unit_price > 40
+      ORDER BY product_id
+
+  - id: Q03
+    complexity: basic
+    title: Large orders (arithmetic on column)
+    description: Arithmetic applied to the column hides the predicate from indexes; it can be moved to the constant side.
+    tags: [sargability, arithmetic, top-n]
+    sql: |
+      SELECT order_id, order_date, total_amount
+      FROM orders
+      WHERE total_amount / 2 > 400
+      ORDER BY total_amount DESC, order_id
+      FETCH FIRST 50 ROWS ONLY
+
+  - id: Q04
+    complexity: basic
+    title: Active corporate customers (redundant DISTINCT)
+    description: DISTINCT over a projection containing the primary key is redundant.
+    tags: [redundant-distinct, filter]
+    sql: |
+      SELECT DISTINCT c.customer_id, c.name, c.segment
+      FROM customers c
+      WHERE c.segment = 'CORPORATE'
+        AND c.is_active = 1
+      ORDER BY c.customer_id
+
+  - id: Q05
+    complexity: basic
+    title: Order volume per status and ship mode (HAVING used as WHERE)
+    description: A HAVING predicate on a grouping column can be pushed into WHERE so rows are filtered before aggregation.
+    tags: [having-to-where, aggregation]
+    sql: |
+      SELECT status, ship_mode, COUNT(*) AS order_count, ROUND(SUM(total_amount), 2) AS revenue
+      FROM orders
+      GROUP BY status, ship_mode
+      HAVING status IN ('SHIPPED', 'DELIVERED')
+      ORDER BY status, ship_mode
+
+  # ============================ INTERMEDIATE ==============================
+  - id: Q06
+    complexity: intermediate
+    title: Customers with a large recent order (IN subquery)
+    description: Semi-join via IN; alternatives are EXISTS or a JOIN with de-duplication.
+    tags: [semi-join, in-subquery]
+    sql: |
+      SELECT c.customer_id, c.name
+      FROM customers c
+      WHERE c.customer_id IN (
+              SELECT o.customer_id
+              FROM orders o
+              WHERE o.order_date >= DATE '2025-06-01'
+                AND o.total_amount > 500)
+      ORDER BY c.customer_id
+
+  - id: Q07
+    complexity: intermediate
+    title: Products that were never ordered (NOT IN anti-join)
+    description: NOT IN anti-join; order_items.product_id is NOT NULL so NOT EXISTS / LEFT JOIN IS NULL are equivalent.
+    tags: [anti-join, not-in]
+    sql: |
+      SELECT p.product_id, p.name
+      FROM products p
+      WHERE p.product_id NOT IN (SELECT oi.product_id FROM order_items oi)
+      ORDER BY p.product_id
+
+  - id: Q08
+    complexity: intermediate
+    title: Products appearing in returned orders (JOIN + DISTINCT)
+    description: A join followed by DISTINCT is really a semi-join and can be written with EXISTS.
+    tags: [join-distinct, semi-join]
+    sql: |
+      SELECT DISTINCT p.product_id, p.name
+      FROM products p
+      JOIN order_items oi ON oi.product_id = p.product_id
+      JOIN orders o ON o.order_id = oi.order_id
+      WHERE o.status = 'RETURNED'
+      ORDER BY p.product_id
+
+  - id: Q09
+    complexity: intermediate
+    title: Customer order summary (correlated scalar subqueries)
+    description: Two correlated scalar subqueries over the same table; can be one grouped outer join. Trap - COUNT must become COALESCE(cnt, 0).
+    tags: [scalar-subquery, decorrelation, trap-count]
+    sql: |
+      SELECT c.customer_id, c.name,
+             (SELECT COUNT(*) FROM orders o WHERE o.customer_id = c.customer_id) AS order_count,
+             (SELECT MAX(o.order_date) FROM orders o WHERE o.customer_id = c.customer_id) AS last_order
+      FROM customers c
+      WHERE c.nation_id = 7
+      ORDER BY c.customer_id
+
+  - id: Q10
+    complexity: intermediate
+    title: Express or bulk-discount big orders (UNION)
+    description: UNION of two filters over the same table; equivalent to a single scan with OR because order_id is unique. Trap - the branches overlap, so UNION ALL is NOT equivalent.
+    tags: [union-to-or, set-operation]
+    sql: |
+      SELECT order_id, total_amount
+      FROM orders
+      WHERE ship_mode = 'EXPRESS' AND total_amount > 500
+      UNION
+      SELECT order_id, total_amount
+      FROM orders
+      WHERE discount_code = 'BULK25' AND total_amount > 500
+      ORDER BY order_id
+
+  # ============================== ADVANCED ================================
+  - id: Q11
+    complexity: advanced
+    title: Products priced above their category average (correlated aggregate)
+    description: Correlated AVG subquery; can be decorrelated with a grouped derived table or AVG() OVER (PARTITION BY).
+    tags: [correlated-subquery, decorrelation, window-function]
+    sql: |
+      SELECT p.product_id, p.name, p.category_id, p.unit_price
+      FROM products p
+      WHERE p.unit_price > (SELECT AVG(p2.unit_price)
+                            FROM products p2
+                            WHERE p2.category_id = p.category_id)
+        AND p.discontinued = 0
+      ORDER BY p.category_id, p.product_id
+
+  - id: Q12
+    complexity: advanced
+    title: Customers active in 2024 but not in 2025 (EXISTS + NOT EXISTS)
+    description: Semi-join and anti-join on the same table; can be one grouped pass with conditional aggregation.
+    tags: [semi-join, anti-join, churn]
+    sql: |
+      SELECT c.customer_id, c.name, c.segment
+      FROM customers c
+      WHERE EXISTS (SELECT 1 FROM orders o
+                    WHERE o.customer_id = c.customer_id
+                      AND o.order_date >= DATE '2024-01-01'
+                      AND o.order_date <  DATE '2025-01-01')
+        AND NOT EXISTS (SELECT 1 FROM orders o
+                        WHERE o.customer_id = c.customer_id
+                          AND o.order_date >= DATE '2025-01-01')
+      ORDER BY c.customer_id
+
+  - id: Q13
+    complexity: advanced
+    title: Top customer by revenue in every nation (duplicated derived table)
+    description: The same aggregation is computed twice; a CTE with MAX() OVER / RANK() computes it once.
+    tags: [duplicate-subquery, cte, window-function, greatest-per-group]
+    sql: |
+      SELECT n.name AS nation, t.customer_id, t.revenue
+      FROM (SELECT c.nation_id, o.customer_id, ROUND(SUM(o.total_amount), 2) AS revenue
+            FROM orders o
+            JOIN customers c ON c.customer_id = o.customer_id
+            WHERE o.status <> 'CANCELLED'
+            GROUP BY c.nation_id, o.customer_id) t
+      JOIN nations n ON n.nation_id = t.nation_id
+      WHERE t.revenue = (SELECT MAX(t2.revenue)
+                         FROM (SELECT c2.nation_id, o2.customer_id, ROUND(SUM(o2.total_amount), 2) AS revenue
+                               FROM orders o2
+                               JOIN customers c2 ON c2.customer_id = o2.customer_id
+                               WHERE o2.status <> 'CANCELLED'
+                               GROUP BY c2.nation_id, o2.customer_id) t2
+                         WHERE t2.nation_id = t.nation_id)
+      ORDER BY n.name, t.customer_id
+
+  - id: Q14
+    complexity: advanced
+    title: Top-3 products per category by revenue (counting subquery)
+    description: Quadratic "count how many are better" top-N-per-group pattern; RANK() <= 3 is equivalent and linear.
+    tags: [top-n-per-group, correlated-subquery, window-function]
+    sql: |
+      SELECT r.category_id, r.product_id, r.revenue
+      FROM (SELECT p.category_id, p.product_id, ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue
+            FROM products p
+            JOIN order_items oi ON oi.product_id = p.product_id
+            GROUP BY p.category_id, p.product_id) r
+      WHERE 3 > (SELECT COUNT(*)
+                 FROM (SELECT p.category_id, p.product_id, ROUND(SUM(oi.quantity * oi.unit_price), 2) AS revenue
+                       FROM products p
+                       JOIN order_items oi ON oi.product_id = p.product_id
+                       GROUP BY p.category_id, p.product_id) r2
+                 WHERE r2.category_id = r.category_id
+                   AND r2.revenue > r.revenue)
+      ORDER BY r.category_id, r.revenue DESC, r.product_id
+
+  - id: Q15
+    complexity: advanced
+    title: Suppliers with above-average review ratings (HAVING with subquery)
+    description: Multi-join aggregation with an uncorrelated scalar subquery in HAVING and a top-N limit.
+    tags: [aggregation, having, scalar-subquery, top-n]
+    sql: |
+      SELECT s.supplier_id, s.name,
+             COUNT(r.review_id) AS review_count,
+             ROUND(AVG(r.rating), 3) AS avg_rating
+      FROM suppliers s
+      JOIN products p ON p.supplier_id = s.supplier_id
+      JOIN reviews r ON r.product_id = p.product_id
+      GROUP BY s.supplier_id, s.name
+      HAVING AVG(r.rating) >= (SELECT AVG(rating) FROM reviews)
+         AND COUNT(r.review_id) >= 20
+      ORDER BY avg_rating DESC, s.supplier_id
+      FETCH FIRST 20 ROWS ONLY
+
+  # ============================== COMPLEX =================================
+  - id: Q16
+    complexity: complex
+    title: Customer lifetime value ranking per nation (multi-CTE + window)
+    description: Two-level aggregation through CTEs with a ranking window function; the per-order level can be collapsed.
+    tags: [cte, window-function, multi-level-aggregation]
+    sql: |
+      WITH order_totals AS (
+          SELECT o.customer_id, o.order_id, o.order_date,
+                 SUM(oi.quantity * oi.unit_price * (1 - oi.discount)) AS net_amount
+          FROM orders o
+          JOIN order_items oi ON oi.order_id = o.order_id
+          WHERE o.status IN ('DELIVERED', 'SHIPPED')
+          GROUP BY o.customer_id, o.order_id, o.order_date),
+      customer_stats AS (
+          SELECT customer_id, COUNT(*) AS n_orders, SUM(net_amount) AS lifetime_value,
+                 MIN(order_date) AS first_order, MAX(order_date) AS last_order
+          FROM order_totals
+          GROUP BY customer_id)
+      SELECT c.customer_id, c.name, n.name AS nation, cs.n_orders,
+             ROUND(cs.lifetime_value, 2) AS lifetime_value,
+             RANK() OVER (PARTITION BY c.nation_id ORDER BY ROUND(cs.lifetime_value, 2) DESC) AS nation_rank
+      FROM customer_stats cs
+      JOIN customers c ON c.customer_id = cs.customer_id
+      JOIN nations n ON n.nation_id = c.nation_id
+      WHERE cs.n_orders >= 3
+      ORDER BY nation, nation_rank, c.customer_id
+
+  - id: Q17
+    complexity: complex
+    title: Monthly revenue with year-to-date totals (correlated running total)
+    description: A correlated subquery recomputes the running total for every month; SUM() OVER is linear. Trap - ROUND must be applied after the running sum.
+    tags: [running-total, correlated-subquery, window-function, trap-rounding]
+    sql: |
+      SELECT m.yr, m.mon, m.revenue,
+             (SELECT ROUND(SUM(o2.total_amount), 2)
+              FROM orders o2
+              WHERE o2.status <> 'CANCELLED'
+                AND EXTRACT(YEAR FROM o2.order_date) = m.yr
+                AND EXTRACT(MONTH FROM o2.order_date) <= m.mon) AS ytd_revenue
+      FROM (SELECT EXTRACT(YEAR FROM o.order_date) AS yr,
+                   EXTRACT(MONTH FROM o.order_date) AS mon,
+                   ROUND(SUM(o.total_amount), 2) AS revenue
+            FROM orders o
+            WHERE o.status <> 'CANCELLED'
+            GROUP BY EXTRACT(YEAR FROM o.order_date), EXTRACT(MONTH FROM o.order_date)) m
+      ORDER BY m.yr, m.mon
+
+  - id: Q18
+    complexity: complex
+    title: Under-paid open orders (repeated correlated subqueries + CASE)
+    description: The same correlated SUM appears in SELECT and WHERE plus an EXISTS in CASE; one grouped outer join suffices.
+    tags: [scalar-subquery, duplicate-subquery, case, decorrelation]
+    sql: |
+      SELECT o.order_id, o.status, o.total_amount,
+             COALESCE((SELECT SUM(p.amount) FROM payments p
+                       WHERE p.order_id = o.order_id AND p.status = 'OK'), 0) AS paid,
+             CASE WHEN EXISTS (SELECT 1 FROM payments p
+                               WHERE p.order_id = o.order_id AND p.status = 'FAILED')
+                  THEN 'Y' ELSE 'N' END AS had_failure
+      FROM orders o
+      WHERE o.status IN ('PENDING', 'SHIPPED')
+        AND o.order_date >= DATE '2025-01-01'
+        AND COALESCE((SELECT SUM(p.amount) FROM payments p
+                      WHERE p.order_id = o.order_id AND p.status = 'OK'), 0) < o.total_amount
+      ORDER BY o.order_id
+
+  - id: Q19
+    complexity: complex
+    title: Category hierarchy revenue roll-up for 2024 (UNION ALL of two aggregations)
+    description: Detail and subtotal rows are computed by scanning the same 5-way join twice; a CTE or GROUPING SETS/ROLLUP does it once.
+    tags: [rollup, union-all, self-join, multi-join, cte]
+    sql: |
+      SELECT parent.name AS top_category, child.name AS category,
+             COUNT(DISTINCT p.product_id) AS products,
+             COUNT(DISTINCT oi.order_id) AS orders,
+             ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2) AS net_revenue
+      FROM categories child
+      JOIN categories parent ON parent.category_id = child.parent_category_id
+      JOIN products p ON p.category_id = child.category_id
+      JOIN order_items oi ON oi.product_id = p.product_id
+      JOIN orders o ON o.order_id = oi.order_id
+      WHERE o.order_date >= DATE '2024-01-01' AND o.order_date < DATE '2025-01-01'
+        AND o.status <> 'CANCELLED'
+      GROUP BY parent.name, child.name
+      UNION ALL
+      SELECT parent.name, 'ALL',
+             COUNT(DISTINCT p.product_id),
+             COUNT(DISTINCT oi.order_id),
+             ROUND(SUM(oi.quantity * oi.unit_price * (1 - oi.discount)), 2)
+      FROM categories child
+      JOIN categories parent ON parent.category_id = child.parent_category_id
+      JOIN products p ON p.category_id = child.category_id
+      JOIN order_items oi ON oi.product_id = p.product_id
+      JOIN orders o ON o.order_id = oi.order_id
+      WHERE o.order_date >= DATE '2024-01-01' AND o.order_date < DATE '2025-01-01'
+        AND o.status <> 'CANCELLED'
+      GROUP BY parent.name
+      ORDER BY 1, 2
+
+  - id: Q20
+    complexity: complex
+    title: Yearly customer cohorts and repeat-purchase rate (CTEs + outer join)
+    description: Cohort analysis through three CTEs, a DISTINCT self-join and conditional aggregation; repeaters can be derived from per-customer counts.
+    tags: [cte, cohort, outer-join, conditional-aggregation]
+    sql: |
+      WITH first_orders AS (
+          SELECT customer_id, MIN(order_date) AS first_date
+          FROM orders
+          WHERE status <> 'CANCELLED'
+          GROUP BY customer_id),
+      cohorts AS (
+          SELECT f.customer_id, EXTRACT(YEAR FROM f.first_date) AS cohort_year
+          FROM first_orders f),
+      repeaters AS (
+          SELECT DISTINCT o.customer_id
+          FROM orders o
+          JOIN first_orders f ON f.customer_id = o.customer_id
+          WHERE o.status <> 'CANCELLED'
+            AND o.order_date > f.first_date)
+      SELECT ch.cohort_year,
+             COUNT(*) AS customers,
+             SUM(CASE WHEN r.customer_id IS NOT NULL THEN 1 ELSE 0 END) AS repeat_customers,
+             ROUND(100.0 * SUM(CASE WHEN r.customer_id IS NOT NULL THEN 1 ELSE 0 END) / COUNT(*), 2) AS repeat_pct
+      FROM cohorts ch
+      LEFT JOIN repeaters r ON r.customer_id = ch.customer_id
+      GROUP BY ch.cohort_year
+      ORDER BY ch.cohort_year
