@@ -30,8 +30,28 @@ config change.
    failure report)    charts)           timings, CPU/IO)          tie-aware order)             with feedback)
 ```
 
+## Results
+
+Main experiment: Groq `openai/gpt-oss-120b` plus the rule-based baseline on the SQLite backend, 20 queries ×
+2 scales × 3 index configurations. Full report with all figures:
+[`results/groq_sqlite_20261007_051554/report.md`](results/groq_sqlite_20261007_051554/report.md)
+(interactive version: `report.html` in the same folder).
+
+| metric | value |
+|---|---|
+| candidates generated | 762 |
+| executable | 720 (94.5%) |
+| semantically equivalent | 660 (91.7% of executable) |
+| improved (of valid) | 235 (35.6%) |
+| regressed / harmful (of valid) | 201 (30.5%) |
+| query runs improved by the pipeline | 78 / 120 |
+| geomean pipeline speedup | 1.89x |
+
+![Rewrite funnel by source](results/groq_sqlite_20261007_051554/figures/funnel.png)
+
 ## Contents
 
+- [Results](#results)
 - [Quick start](#quick-start)
 - [Using an LLM (Groq)](#using-an-llm-groq)
 - [Using Claude and Oracle](#using-claude-and-oracle)
